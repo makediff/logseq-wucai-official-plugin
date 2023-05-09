@@ -1,9 +1,9 @@
 
-rm -rf dist dist_*
+rm -rf dist logseq-wucai-official-plugin-*
 npm run build
 
-tt=$( date "+%Y%m%d%H%M" )
-outfn=dist_$tt
+tt=$( date "+%y%m%d%H%M" )
+outfn="logseq-wucai-official-plugin-${tt}"
 mkdir -p ./$outfn
 cp logo.png LICENSE package.json readme.md ./$outfn
 
