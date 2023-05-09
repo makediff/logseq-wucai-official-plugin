@@ -107,8 +107,8 @@ export async function getUserAuthToken(attempt = 0) {
     logseq.UI.showMsg('Authorization failed. Try again', 'warning')
     return
   }
-  if (data.code === 1 && data.accessToken) {
-    return data.accessToken
+  if (data.code === 1 && data.data.accessToken) {
+    return data.data.accessToken
   }
   if (attempt > 20) {
     console.log('WuCai Official plugin: reached attempt limit in getUserAuthToken')
@@ -210,9 +210,7 @@ function checkResponseBody(rsp: any): ResponseCheckRet {
     logseq.updateSettings({ wuCaiToken: '' })
   }
   let err = localize(rsp['message'] || 'call api failed')
-  if (errCode) {
-    err = `WuCai: ${errCode}`
-  }
+  err = `WuCai: ${errCode} ${err}`
   ret.msg = err
   return ret
 }
@@ -303,7 +301,47 @@ export async function exportInit(auto?: boolean, setNotification?, setIsSyncing?
 
   if (SUCCESS_STATUSES.includes(initRet.taskStatus)) {
     // step1~2: check update first, then sync data
-    await downloadArchive(lastCursor, true, setNotification, setIsSyncing)
+    let rootPage: PageEntity = await logseq.Editor.getPage(BGCONSTS.ROOT_PAGE_NAME)
+    if (!rootPage) {
+      rootPage = await logseq.Editor.createPage(
+        BGCONSTS.ROOT_PAGE_NAME,
+        { title: BGCONSTS.ROOT_PAGE_NAME },
+        {
+          createFirstBlock: true,
+          redirect: false,
+        }
+      )
+      await logseq.Editor.insertBlock(
+        rootPage.originalName,
+        '此节点数据由五彩划线自动同步，请不要手动修改，防止内容被覆盖'
+      )
+    }
+    if (!rootPage) {
+      return
+    }
+    const rootBlocks: Array<BlockEntity> = await logseq.Editor.getPageBlocksTree(BGCONSTS.ROOT_PAGE_NAME)
+    if (!rootBlocks || rootBlocks.length <= 0) {
+      return
+    }
+    const firstBlockEntity = rootBlocks[0].uuid
+    const noteUUIDMap: { [key: string]: string } = {}
+    rootBlocks.forEach((blk) => {
+      let noteidx = blk.properties?.noteidx
+      if (noteidx) {
+        noteUUIDMap[noteidx] = blk.uuid
+      }
+    })
+    logger({ lastCursor, noteUUIDMap, firstBlockEntity })
+    const preferredDateFormat = (await logseq.App.getUserConfigs()).preferredDateFormat
+    await downloadArchive(
+      lastCursor,
+      true,
+      noteUUIDMap,
+      firstBlockEntity,
+      preferredDateFormat,
+      setNotification,
+      setIsSyncing
+    )
   } else {
     handleSyncSuccess()
     logseq.UI.showMsg('WuCai data is already up to date')
@@ -316,34 +354,12 @@ export async function exportInit(auto?: boolean, setNotification?, setIsSyncing?
 async function downloadArchive(
   lastCursor2: string,
   checkUpdate: boolean,
+  noteUUIDMap: { [key: string]: string },
+  firstBlockEntity: PageIdentity,
+  preferredDateFormat: string,
   setNotification?,
   setIsSyncing?
 ): Promise<void> {
-  let rootPage: PageEntity = await logseq.Editor.getPage(BGCONSTS.ROOT_PAGE_NAME)
-  if (!rootPage) {
-    rootPage = await logseq.Editor.createPage(
-      BGCONSTS.ROOT_PAGE_NAME,
-      { title: BGCONSTS.ROOT_PAGE_NAME },
-      {
-        createFirstBlock: true,
-        redirect: false,
-      }
-    )
-    await logseq.Editor.insertBlock(rootPage.uuid, '五彩插件同步说明')
-  }
-  if (!rootPage) {
-    return
-  }
-  const rootBlocks: Array<BlockEntity> = await logseq.Editor.getPageBlocksTree(BGCONSTS.ROOT_PAGE_NAME)
-  const firstBlockEntity = rootBlocks[0].uuid
-  const noteUUIDMap: { [key: string]: string } = {}
-  rootBlocks.forEach((blk) => {
-    let noteidx = blk.properties?.noteidx
-    if (noteidx) {
-      noteUUIDMap[noteidx] = blk.uuid
-    }
-  })
-
   let response
   let flagx = ''
   let writeStyle = 1
@@ -378,23 +394,20 @@ async function downloadArchive(
     logseq.UI.showMsg(checkRet.msg, 'error')
     return
   }
-  const preferredDateFormat = (await logseq.App.getUserConfigs()).preferredDateFormat
   const downloadRet: ExportDownloadResponse = data2['data']
   const entries: Array<NoteEntry> = downloadRet.notes || []
-  if (entries.length) {
-    for (const entry of entries) {
-      const noteId: string = entry.noteIdX
-      let pageId = noteUUIDMap[noteId]
-      if (pageId) {
-        await logseq.Editor.removeBlock(pageId)
-        delete noteUUIDMap[noteId]
-      }
-      const blocks = getBlocksFromEntry(entry, preferredDateFormat)
-      if (blocks && blocks.length > 0) {
-        let updateRet = await updatePage(firstBlockEntity, blocks)
-        if (updateRet && updateRet.length >= 1 && updateRet[0].uuid) {
-          noteUUIDMap[noteId] = updateRet[0].uuid
-        }
+  for (const entry of entries) {
+    const noteId: string = entry.noteIdX
+    let pageId = noteUUIDMap[noteId]
+    if (pageId) {
+      await logseq.Editor.removeBlock(pageId)
+      delete noteUUIDMap[noteId]
+    }
+    const blocks = getBlocksFromEntry(entry, preferredDateFormat)
+    if (blocks && blocks.length > 0) {
+      let updateRet = await updatePage(firstBlockEntity, blocks)
+      if (updateRet && updateRet.length >= 1 && updateRet[0].uuid) {
+        noteUUIDMap[noteId] = updateRet[0].uuid
       }
     }
   }
@@ -409,12 +422,16 @@ async function downloadArchive(
     await acknowledgeSyncCompleted()
     logseq.UI.showMsg('WuCai Hightlights sync completed')
   } else {
-    if (checkUpdate && isEmpty) {
-      // begain sync data
-      downloadArchive(lastCursor2, false, setNotification, setIsSyncing)
-    } else {
-      downloadArchive(lastCursor2, checkUpdate, setNotification, setIsSyncing)
-    }
+    const isBeginSyncData = checkUpdate && isEmpty
+    await downloadArchive(
+      lastCursor2,
+      !isBeginSyncData,
+      noteUUIDMap,
+      firstBlockEntity,
+      preferredDateFormat,
+      setNotification,
+      setIsSyncing
+    )
   }
   logger({ msg: 'continue download', checkUpdate, lastCursor2 })
 }
