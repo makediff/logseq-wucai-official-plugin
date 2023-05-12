@@ -238,7 +238,7 @@ function handleSyncSuccess(msg = 'Synced', lastCursor: string = '') {
 }
 
 function getLastCursor(newCursor: string, savedCursor: string): string {
-  return newCursor || savedCursor
+  return newCursor || savedCursor || ''
 }
 
 // @ts-ignore
@@ -413,7 +413,12 @@ async function downloadArchive(
   }
   const isEmpty = entries.length <= 0
   const isCompleted = !checkUpdate && isEmpty
-  lastCursor2 = getLastCursor(downloadRet.lastCursor2, lastCursor2)
+  const tmpLastCursor2 = getLastCursor(downloadRet.lastCursor2, lastCursor2)
+  if (!tmpLastCursor2 || lastCursor2 == tmpLastCursor2) {
+    logseq.UI.showMsg('WuCai Hightlights sync completed')
+    return
+  }
+  lastCursor2 = tmpLastCursor2
   logseq.updateSettings({ lastCursor: lastCursor2 })
   if (isCompleted) {
     setIsSyncing(false)
@@ -422,6 +427,7 @@ async function downloadArchive(
     await acknowledgeSyncCompleted()
     logseq.UI.showMsg('WuCai Hightlights sync completed')
   } else {
+    await new Promise((r) => setTimeout(r, 5000))
     const isBeginSyncData = checkUpdate && isEmpty
     await downloadArchive(
       lastCursor2,
