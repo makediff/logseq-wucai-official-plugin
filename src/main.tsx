@@ -123,24 +123,33 @@ function formatDate(ts: number, preferredDateFormat: string): string {
   return format(new Date(ts * 1000), preferredDateFormat)
 }
 
+function detectCodeQuote(cnt: string): string {
+  // 用来检测内容是否有代码引用，如果有，并且还没有闭合，则补全，是logseq的一个bug
+  if (!cnt || cnt.length <= 0) {
+    return ''
+  }
+  return cnt.replace(/^\s+|\s+$/, '')
+}
+
 function getBlocksFromEntry(entry: NoteEntry, preferredDateFormat: string): Array<IBatchBlock> {
   if (!entry) {
     return []
   }
-  let dt = formatDate(entry.createAt, preferredDateFormat)
+  entry.tags = entry.tags || []
+  // entry.tags.push('WuCai')
   const tags = (entry.tags || []).join(' ')
+  const datex = `[[${formatDate(entry.createAt, 'yyyy-MM-dd')}]]`
+  const createat = `${formatDate(entry.createAt, 'yyyy-MM-dd HH:mm')}`
+  const updateat = `${formatDate(entry.updateAt, 'yyyy-MM-dd HH:mm')}`
   const block: IBatchBlock = {
-    content: entry.title || 'No title',
-    properties: { noteid: entry.noteIdX },
-    children: [
-      {
-        content: `${dt}, ${tags} #WuCai [原文](${entry.url})`,
-      } as IBatchBlock,
-    ],
+    content: detectCodeQuote(entry.title) || 'No title',
+    properties: { noteid: entry.noteIdX, date: datex, tags, createat, updateat, url: entry.url },
+    children: [],
   }
+
   if (entry.pageNote) {
     block.children?.push({
-      content: entry.pageNote,
+      content: detectCodeQuote(entry.pageNote),
     } as IBatchBlock)
   }
   if (!entry.highlights || entry.highlights.length <= 0) {
@@ -152,7 +161,7 @@ function getBlocksFromEntry(entry: NoteEntry, preferredDateFormat: string): Arra
       children: [],
     }
     if (light.annonation) {
-      subEntry.children?.push({ content: light.annonation })
+      subEntry.children?.push({ content: detectCodeQuote(light.annonation) })
     }
     block.children?.push(subEntry)
   })
@@ -206,7 +215,6 @@ function checkResponseBody(rsp: any): ResponseCheckRet {
   let errCode = rsp.code
   ret.isOk = false
   if (10000 === errCode || 10100 === errCode || 10101 === errCode) {
-    // 无效Token
     logseq.updateSettings({ wuCaiToken: '' })
   }
   let err = localize(rsp['message'] || 'call api failed')
@@ -411,6 +419,7 @@ async function downloadArchive(
       }
     }
   }
+
   const isEmpty = entries.length <= 0
   const isCompleted = !checkUpdate && isEmpty
   const tmpLastCursor2 = getLastCursor(downloadRet.lastCursor2, lastCursor2)
@@ -452,29 +461,30 @@ async function acknowledgeSyncCompleted() {
 }
 
 function configureSchedule() {
-  checkForCurrentGraph()
-  // @ts-ignore
-  const onAnotherGraph = window.onAnotherGraph
-  if (logseq.settings!.wuCaiToken && logseq.settings!.frequency) {
-    if (logseq.settings!.frequency === 'Never') {
-      return
-    }
-    if (!onAnotherGraph) {
-      const frequency = parseInt(logseq.settings!.frequency)
-      if (!isNaN(frequency) && frequency > 0) {
-        const milliseconds = frequency * 60 * 1000
-        // eslint-disable-next-line @typescript-eslint/no-empty-function
-        window.setInterval(
-          () => exportInit(true, console.log, () => {}).then(() => console.log('Auto sync loaded.')),
-          milliseconds
-        )
-      } else {
-        logseq.updateSettings({
-          frequency: '180',
-        })
-      }
-    }
-  }
+  // 23.6.4 引擎同步会引起卡顿，目前暂停自动同步
+  // checkForCurrentGraph()
+  // // @ts-ignore
+  // const onAnotherGraph = window.onAnotherGraph
+  // if (logseq.settings!.wuCaiToken && logseq.settings!.frequency) {
+  //   if (logseq.settings!.frequency === 'Never') {
+  //     return
+  //   }
+  //   if (!onAnotherGraph) {
+  //     const frequency = parseInt(logseq.settings!.frequency)
+  //     if (!isNaN(frequency) && frequency > 0) {
+  //       const milliseconds = frequency * 60 * 1000
+  //       // eslint-disable-next-line @typescript-eslint/no-empty-function
+  //       window.setInterval(
+  //         () => exportInit(true, console.log, () => {}).then(() => console.log('Auto sync loaded.')),
+  //         milliseconds
+  //       )
+  //     } else {
+  //       logseq.updateSettings({
+  //         frequency: '180',
+  //       })
+  //     }
+  //   }
+  // }
 }
 
 function logger(msg: any) {
@@ -497,16 +507,16 @@ function main() {
     {
       key: 'isLoadAuto',
       type: 'boolean',
-      default: true,
+      default: false,
       title: 'Sync automatically when Logseq opens',
       description: 'If enabled, WuCai will automatically resync with Logseq each time you open the app',
     },
     {
       key: 'frequency',
       type: 'enum',
-      enumChoices: ['60', '180', '360', 'Never'],
+      enumChoices: ['Never'],
       enumPicker: 'select',
-      default: '180',
+      default: 'Never',
       title: 'Resync frequency',
       description:
         'WuCai will automatically resync with Logseq when the app is open at the specified interval (in minutes)',
