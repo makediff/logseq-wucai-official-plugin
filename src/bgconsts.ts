@@ -3,9 +3,9 @@ export class BGCONSTS {
   static SERVICE_ID: number = 11
   static MARKET_INFO: string = 'logseq-plugin'
   static ENDPOINT: string = 'logseqwucai'
-  static VERSION: string = '23.6.6'
-  static VERSION_NUM: number = 230606
-  static IS_DEBUG: boolean = false
+  static VERSION: string = '23.6.13'
+  static VERSION_NUM: number = 230613
+  static IS_DEBUG: boolean = true
   static TEST_TOKEN: string = ''
   static BASE_URL: string = 'https://marker.dotalk.cn'
   static OUT: string = 'json'

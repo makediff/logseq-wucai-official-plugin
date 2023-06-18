@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { useMountedState } from 'react-use'
+import { format } from 'date-fns'
 
 class WuCaiUtils {
   static splitStringAndTrimEmptyLine(coretxt: string): Array<string> {
@@ -36,6 +37,40 @@ class WuCaiUtils {
       }
     }, [])
     return visible
+  }
+
+  static escapeQuotes(s: string): string {
+    return s.replace(/"/g, '\\"')
+  }
+
+  static getWebPagePageName() {}
+
+  static formatTitle(s: string): string {
+    s = s || ''
+    s = s.replace(/^\s+|\s+$/, '')
+    return s
+  }
+
+  static formatContent(s: string): string {
+    // 因为logseq里的block不允许有 head
+    s = s || ''
+    s = s.replace(/^\s+|\s+$/, '') // 因为logseq会自动的去空格，是为了保持一致
+    return s.replace(/#\s+/g, '#')
+  }
+
+  static generatePageName(titleTemplate: string, createat: number): string {
+    let ds = new Date(createat * 1000)
+    const prefix = 'WuCaiHighlights-'
+    if ('year' == titleTemplate) {
+      return prefix + format(ds, 'yyyy')
+    }
+    if ('month' == titleTemplate) {
+      return prefix + format(ds, 'yyyyMM')
+    }
+    if ('quarter' == titleTemplate) {
+      return prefix + format(ds, 'yyyyQQQ')
+    }
+    return prefix + format(ds, 'yyyy-MM')
   }
 }
 
