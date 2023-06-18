@@ -70,7 +70,7 @@ function App() {
             <div>
               <h2 className="text-xl font-semibold mb-2">WuCai Highlights Official</h2>
               <span>
-                Created by{' '}
+                Created by 
                 <a
                   className="underline decoration-sky-500 text-sky-500"
                   target="_blank"
@@ -78,7 +78,7 @@ function App() {
                   rel="noreferrer"
                 >
                   五彩
-                </a>{' '}
+                </a> 
               </span>
             </div>
             <div className="flex flex-col justify-between items-end">

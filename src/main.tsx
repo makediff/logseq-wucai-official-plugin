@@ -133,27 +133,21 @@ function formatDate(ts: number, preferredDateFormat: string): string {
   return format(new Date(ts * 1000), preferredDateFormat)
 }
 
-// function detectCodeQuote(cnt: string): string {
-//   // 用来检测内容是否有代码引用，如果有，并且还没有闭合，则补全，是logseq的一个bug
-//   if (!cnt || cnt.length <= 0) {
-//     return ''
-//   }
-//   return cnt.replace(/^\s+|\s+$/, '')
-// }
-
 function getNewEntryBlock(entry: NoteEntry, preferredDateFormat: string, exportConfig: ExportConfig): IBatchBlock {
-  const isHaveJournals = exportConfig.logseqPageAddToJournals === 1
   const tags = (entry.tags || []).join(' ')
   const createat = `${formatDate(entry.createAt, 'yyyy-MM-dd HH:mm')}`
   const updateat = `${formatDate(entry.updateAt, 'yyyy-MM-dd HH:mm')}`
   let prop = { noteid: entry.noteIdX, tags, createat, updateat, url: entry.url }
+
+  const isHaveJournals = exportConfig.logseqPageAddToJournals === 1
   if (isHaveJournals) {
     const datex = `[[${formatDate(entry.createAt, preferredDateFormat)}]]`
     prop.date = datex
   }
-  if (exportConfig.logseqPageNoteAsAttr === 1) {
+  const isPageNoteAsAttr = exportConfig.logseqPageNoteAsAttr === 1
+  if (isPageNoteAsAttr) {
     if (entry.pageNote && entry.pageNote.length > 0) {
-      prop['笔记'] = WuCaiUtils.formatContent(entry.pageNote)
+      prop.note = WuCaiUtils.formatContent(entry.pageNote)
     }
   }
   return {
@@ -161,50 +155,6 @@ function getNewEntryBlock(entry: NoteEntry, preferredDateFormat: string, exportC
     properties: prop,
   } as IBatchBlock
 }
-
-// function getBlocksFromEntry(entry: NoteEntry, preferredDateFormat: string): Array<IBatchBlock> {
-//   if (!entry) {
-//     return []
-//   }
-//   entry.tags = entry.tags || []
-//   const tags = (entry.tags || []).join(' ')
-//   const datex = `[[${formatDate(entry.createAt, preferredDateFormat)}]]`
-//   const createat = `${formatDate(entry.createAt, 'yyyy-MM-dd HH:mm')}`
-//   const updateat = `${formatDate(entry.updateAt, 'yyyy-MM-dd HH:mm')}`
-//   const block: IBatchBlock = {
-//     content: WuCaiUtils.formatTitle(entry.title) || 'No title',
-//     properties: { noteid: entry.noteIdX, date: datex, tags, createat, updateat, url: entry.url },
-//     children: [],
-//   }
-
-//   if (entry.pageNote) {
-//     block.children?.push({
-//       content: WuCaiUtils.formatTitle(entry.pageNote),
-//     } as IBatchBlock)
-//   }
-//   if (!entry.highlights || entry.highlights.length <= 0) {
-//     return [block]
-//   }
-//   entry.highlights.forEach((light) => {
-//     let subEntry: IBatchBlock = {
-//       content: light.imageUrl ? `![](${light.imageUrl})` : light.note,
-//       children: [],
-//     }
-//     if (light.annonation) {
-//       subEntry.children?.push({ content: WuCaiUtils.formatTitle(light.annonation) })
-//     }
-//     block.children?.push(subEntry)
-//   })
-//   return [block]
-// }
-
-// async function updatePage(parentBlock: PageIdentity, blocks: Array<IBatchBlock>, sibling: boolean = false) {
-//   if (!parentBlock) {
-//     return
-//   }
-//   await new Promise((r) => setTimeout(r, 500))
-//   return await logseq.Editor.insertBatchBlock(parentBlock, blocks, { sibling })
-// }
 
 function handleSyncError(cb: () => void) {
   logseq.updateSettings({
@@ -227,6 +177,7 @@ interface ResponseCheckRet {
   isOk: boolean
   msg: string
 }
+
 // 对接口返回的内容进行检查
 function checkResponseBody(rsp: any): ResponseCheckRet {
   let ret: ResponseCheckRet = { isOk: true, msg: '' }
@@ -316,6 +267,7 @@ function getLastCursor(newCursor: string, savedCursor: string): string {
 
 // @ts-ignore
 export async function exportInit(auto?: boolean, setNotification?, setIsSyncing?) {
+  setNotification = setNotification || function (x: any) {}
   // @ts-ignore
   if (window.onAnotherGraph) {
     setIsSyncing(false)
@@ -381,50 +333,17 @@ export async function exportInit(auto?: boolean, setNotification?, setIsSyncing?
     return
   }
 
-  // step1~2: check update first, then sync data
-  // let rootPage: PageEntity = await logseq.Editor.getPage(BGCONSTS.ROOT_PAGE_NAME)
-  // if (!rootPage) {
-  //   rootPage = await logseq.Editor.createPage(
-  //     BGCONSTS.ROOT_PAGE_NAME,
-  //     {},
-  //     {
-  //       createFirstBlock: false,
-  //       redirect: false,
-  //     }
-  //   )
-  // }
-  // if (!rootPage) {
-  //   return
-  // }
-
   // init values
   initRet.exportConfig = initRet.exportConfig || {}
-  initRet.exportConfig.logseqSplitTemplate = initRet.exportConfig.logseqSplitTemplate || 'allinone'
+  initRet.exportConfig.logseqSplitTemplate = initRet.exportConfig.logseqSplitTemplate || 'one'
   initRet.exportConfig.logseqPageAddToJournals = initRet.exportConfig.logseqPageAddToJournals || 1
   initRet.exportConfig.logseqPageNoteAsAttr = initRet.exportConfig.logseqPageNoteAsAttr || 2
   initRet.exportConfig.logseqAnnoAsAttr = initRet.exportConfig.logseqAnnoAsAttr || 2
 
-  const preferredDateFormat = (await logseq.App.getUserConfigs()).preferredDateFormat
-  await downloadArchive(lastCursor, true, preferredDateFormat, initRet.exportConfig, setNotification, setIsSyncing)
+  const df = (await logseq.App.getUserConfigs()).preferredDateFormat
+  // step1~2: check update first, then sync data
+  await downloadArchive(lastCursor, true, df, initRet.exportConfig, setNotification, setIsSyncing)
 }
-
-// async function getPageOrCreate(pageName: string): PageEntity | null {
-//   if (!pageName || pageName.length <= 0) {
-//     return null
-//   }
-//   let entry: PageEntity | null = await logseq.Editor.getPage(pageName)
-//   if (entry) {
-//     return entry
-//   }
-//   return await logseq.Editor.createPage(
-//     pageName,
-//     {},
-//     {
-//       createFirstBlock: false,
-//       redirect: false,
-//     }
-//   )
-// }
 
 // @ts-ignore
 async function downloadArchive(
@@ -455,8 +374,8 @@ async function downloadArchive(
   }
   if (!response || !response.ok) {
     setIsSyncing(false)
-    setNotification(null)
-    logger({ msg: 'req download api error', response })
+    setNotification('request download api error 1')
+    logger({ msg: 'req download api error 1', response })
     logseq.UI.showMsg(getErrorMessageFromResponse(response as Response), 'error')
     return
   }
@@ -465,7 +384,7 @@ async function downloadArchive(
   const checkRet: ResponseCheckRet = checkResponseBody(data2)
   if (!checkRet.isOk) {
     setIsSyncing(false)
-    setNotification(null)
+    setNotification('request download api error 2')
     logger({ msg: 'req download api error 2', checkRet })
     logseq.UI.showMsg(checkRet.msg, 'error')
     return
@@ -475,18 +394,18 @@ async function downloadArchive(
   const entries: Array<NoteEntry> = downloadRet.notes || []
 
   // 如果是同步到单页，则先建立好父节点，避免每次创建
-  let parentEntry
   let parentUUID
   let parentName = BGCONSTS.ROOT_PAGE_NAME
-  let isAllInOne = exportConfig.logseqSplitTemplate === 'allinone'
+  let isAllInOne = exportConfig.logseqSplitTemplate === 'one'
   if (isAllInOne) {
+    let parentEntry
     parentEntry = await logseq.Editor.getPage(parentName)
     if (!parentEntry) {
       parentEntry = await logseq.Editor.createPage(parentName)
     }
     if (!parentEntry) {
       setIsSyncing && setIsSyncing(false)
-      setNotification && setNotification(null)
+      setNotification && setNotification('create page error ')
       logger({ msg: 'create page error', parentName })
       logseq.UI.showMsg('创建页面错误 1', 'error')
       return
@@ -499,28 +418,29 @@ async function downloadArchive(
     try {
       if (!isAllInOne) {
         parentName = WuCaiUtils.generatePageName(exportConfig.logseqSplitTemplate, entry.createAt)
-        // 检查页面是否创建，如果没有则创建
-        parentEntry = await logseq.Editor.getPage(parentName)
-        if (!parentEntry) {
-          parentEntry = await logseq.Editor.createPage(parentName)
+        parentUUID = cachedPageUUID[parentName] || ''
+        if (parentUUID.length <= 0) {
+          // 检查页面是否创建，如果没有则创建
+          let parentEntry = await logseq.Editor.getPage(parentName)
+          if (!parentEntry) {
+            parentEntry = await logseq.Editor.createPage(parentName)
+          }
+          if (!parentEntry) {
+            // create page error
+            continue
+          }
+          parentUUID = parentEntry.uuid
+          cachedPageUUID[parentName] = parentEntry.uuid
         }
-        if (!parentEntry) {
-          // create page error
-          continue
-        }
-        parentUUID = parentEntry.uuid
-        cachedPageUUID[parentName] = parentEntry.uuid
       }
       const noteIdX = entry.noteIdX
       let webpageBlock = await getWebPageBlockByNoteIdX(parentName, noteIdX)
       if (!webpageBlock) {
-        // create a new block for this webpage
-
         const tmpBlock = getNewEntryBlock(entry, preferredDateFormat, exportConfig)
         if (!tmpBlock) {
           continue
         }
-        logger({ msg: 'prepare insert webpage', parentUUID, cnt: tmpBlock.content })
+        // logger({ msg: 'prepare insert webpage', parentUUID, cnt: tmpBlock.content })
         webpageBlock = await logseq.Editor.insertBlock(parentUUID, tmpBlock.content, {
           sibling: false,
           properties: tmpBlock.properties,
@@ -532,18 +452,28 @@ async function downloadArchive(
       }
 
       entry.highlights = entry.highlights || []
-      if (exportConfig.logseqPageNoteAsAttr !== 1) {
-        // 如果页面笔记不作为block的属性，则和划线列表同级别
-        if (entry.pageNote && entry.pageNote.length > 0) {
+
+      // is have pagenote ?
+      if (entry.pageNote && entry.pageNote.length > 0) {
+        const pageNoteCore = WuCaiUtils.formatContent(entry.pageNote)
+        const isPageNoteAsAttr = exportConfig.logseqPageNoteAsAttr === 1
+        if (isPageNoteAsAttr) {
+          webpageBlock.properties = webpageBlock.properties || {}
+          const oldNoteProp = webpageBlock.properties['note']
+          if (oldNoteProp != pageNoteCore) {
+            await logseq.Editor.upsertBlockProperty(webpageBlock.uuid, 'note', pageNoteCore)
+          }
+        } else {
+          // 如果页面笔记不作为block的属性，则和划线列表同级别
           entry.highlights.unshift({
-            note: entry.pageNote,
+            note: pageNoteCore,
           } as HighlightInfo)
         }
       }
 
       const highParentUUID = webpageBlock.uuid
-      const highlights = entry.highlights || []
-      for (let light of highlights) {
+      const isAnnoAsAttr = exportConfig.logseqAnnoAsAttr === 1
+      for (const light of entry.highlights) {
         let noteCore
         if (light.imageUrl && light.imageUrl.length > 0) {
           noteCore = `![](${light.imageUrl})`
@@ -552,7 +482,6 @@ async function downloadArchive(
         }
         let highBlock = await getHighlightBlockBy(highParentUUID, noteCore)
         if (!highBlock) {
-          console.log({ msg: 'highBlock not found', highBlock, noteCore })
           highBlock = (await logseq.Editor.insertBlock(highParentUUID, noteCore, { sibling: false })) || undefined
         }
         if (!highBlock) {
@@ -560,19 +489,29 @@ async function downloadArchive(
         }
         if (light.annonation && light.annonation.length > 0) {
           const annoCore = WuCaiUtils.formatContent(light.annonation)
-          let annoBlock = await getHighlightBlockBy(highBlock.uuid, annoCore)
-          if (!annoBlock) {
-            await logseq.Editor.insertBlock(highBlock.uuid, annoCore)
+          if (isAnnoAsAttr) {
+            highBlock.properties = highBlock.properties || {}
+            const oldNoteProp = highBlock.properties['note']
+            if (oldNoteProp != annoCore) {
+              await logseq.Editor.upsertBlockProperty(highBlock.uuid, 'note', annoCore)
+            }
+          } else {
+            let annoBlock = await getHighlightBlockBy(highBlock.uuid, annoCore)
+            if (!annoBlock) {
+              await logseq.Editor.insertBlock(highBlock.uuid, annoCore)
+            }
           }
         }
       }
     } catch (e2) {
       logger({ msg: 'process entry error', entry, e2 })
+      setNotification && setNotification('process highlight error')
     }
   }
 
   if (!checkUpdate) {
     console.log({ v2: 3 })
+    setNotification && setNotification(null)
     setIsSyncing && setIsSyncing(false)
     return
   }
@@ -581,6 +520,7 @@ async function downloadArchive(
   const isCompleted = !checkUpdate && isEmpty
   const tmpLastCursor2 = getLastCursor(downloadRet.lastCursor2, lastCursor2)
   if (!tmpLastCursor2 || lastCursor2 == tmpLastCursor2) {
+    setNotification && setNotification(null)
     logseq.UI.showMsg('WuCai Hightlights sync completed')
     return
   }
@@ -599,13 +539,7 @@ async function downloadArchive(
 
   await new Promise((r) => setTimeout(r, 5000))
   const isBeginSyncData = checkUpdate && isEmpty
-  await downloadArchive(
-    lastCursor2,
-    !isBeginSyncData,
-    preferredDateFormat,
-    setNotification,
-    setIsSyncing
-  )
+  await downloadArchive(lastCursor2, !isBeginSyncData, preferredDateFormat, exportConfig, setNotification, setIsSyncing)
   logger({ msg: 'continue download', checkUpdate, lastCursor2 })
 }
 
@@ -619,8 +553,8 @@ async function acknowledgeSyncCompleted() {
 }
 
 function configureSchedule() {
+  checkForCurrentGraph()
   // 23.6.4 引擎同步会引起卡顿，目前暂停自动同步
-  // checkForCurrentGraph()
   // // @ts-ignore
   // const onAnotherGraph = window.onAnotherGraph
   // if (logseq.settings!.wuCaiToken && logseq.settings!.frequency) {
@@ -682,7 +616,7 @@ function main() {
   ]
   logseq.useSettingsSchema(schema)
   const pluginId = logseq.baseInfo.id
-  console.info(`#${pluginId}: MAIN`)
+  console.info({ msg: 'wucai loaded', pluginId })
   const container = document.getElementById('app')
   const root = createRoot(container!)
   root.render(
@@ -712,7 +646,7 @@ function main() {
     }
 
     [class^='wucai-'],
-    [class*=' wucai-'] {
+    [class*='wucai-'] {
       speak: never;
       font-style: normal;
       font-weight: normal;
