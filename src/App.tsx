@@ -29,6 +29,14 @@ function App() {
     }
   }
 
+  // 重置同步光标
+  async function resetSyncCursor() {
+    if (logseq.settings && logseq.settings.lastCursor) {
+      logseq.settings.lastCursor = ''
+      logseq.UI.showMsg(`reset sync cursor success`, 'warning')
+    }
+  }
+
   async function initiateSync() {
     checkForCurrentGraph()
     // @ts-ignore
@@ -68,9 +76,8 @@ function App() {
         <div className="absolute top-1/3 bg-white p-3 w-2/5 border">
           <div className="flex place-content-between">
             <div>
-              <h2 className="text-xl font-semibold mb-2">WuCai Highlights Official</h2>
+              <h2 className="text-xl font-semibold mb-2">五彩Logseq同步</h2>
               <span>
-                Created by 
                 <a
                   className="underline decoration-sky-500 text-sky-500"
                   target="_blank"
@@ -78,7 +85,8 @@ function App() {
                   rel="noreferrer"
                 >
                   五彩
-                </a> 
+                </a>
+                官方制作
               </span>
             </div>
             <div className="flex flex-col justify-between items-end">
@@ -90,16 +98,16 @@ function App() {
                   />
                 </svg>
               </button>
-              {currentGraph && <span className="text-sm text-gray-500">Connected to (graph): {currentGraph.name}</span>}
+              {currentGraph && <span className="text-sm text-gray-500">当前库为 {currentGraph.name}</span>}
             </div>
           </div>
           <hr className="w-full mt-3 mb-3" />
           {!accessToken && (
             <div className="mt-1 flex justify-between">
               <div className="text-m text-gray-700">
-                Connect Logseq to WuCai
+                获取五彩连接授权
                 <p className="text-sm text-gray-500 dark:text-gray-400">
-                  The WuCai plugin enables automatic syncing of all your highlights. Note: Requires WuCai account.
+                  连接到五彩后，将会自动同步你的划线到Logseq，如果没有五彩账号请先注册。
                 </p>
               </div>
               <div className="self-center mr-1">
@@ -108,7 +116,7 @@ function App() {
                   type="button"
                   className="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-3 py-2 text-center mr-2 mb-2 dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800"
                 >
-                  Connect
+                  获取授权
                 </button>
               </div>
             </div>
@@ -118,9 +126,13 @@ function App() {
               <div className="mt-1">
                 <div className="mt-1 mb-4 flex justify-between">
                   <div className="text-m text-gray-700 w-2/3">
-                    Sync your WuCai data with Logseq
+                    开始同步你的数据到Logseq
                     <p className="text-sm text-gray-500 dark:text-gray-400">
-                      On first sync, the WuCai plugin will create a new page named {BGCONSTS.ROOT_PAGE_NAME}
+                      点击按钮开始同步，同步前可先到
+                      <a href="https://marker.dotalk.cn/#/personSetting/logseq" target="_blank">
+                        划线管理后台
+                      </a>
+                      配置导出模板。
                     </p>
                   </div>
                   <div className="self-center mr-1 mt-1">
@@ -132,18 +144,16 @@ function App() {
                         isSyncing ? 'button-disabled' : ''
                       }`}
                     >
-                      Initiate Sync
+                      开始同步
                     </button>
                   </div>
                 </div>
                 <div className="mt-1 mb-4 flex justify-between">
                   <div>
                     <label htmlFor="isLoadAuto" className="text-m text-gray-700">
-                      Sync automatically when Logseq opens
+                      是否在Logseq启动的时候，自动触发同步
                     </label>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
-                      If enabled, Readwise will automatically resync with Logseq each time you open the app
-                    </p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">此功能目前不可用</p>
                   </div>
                   <div className="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
                     <input
@@ -165,19 +175,31 @@ function App() {
                     ></label>
                   </div>
                 </div>
+                <div className="mt-1 mb-4 flex justify-between">
+                  <div className="text-m text-gray-700 w-2/3">重置同步位置，强制重新同步所有内容</div>
+                  <div className="self-center mr-1 mt-1">
+                    <button
+                      onClick={resetSyncCursor}
+                      type="button"
+                      className={`text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-3 py-2 text-center mr-2 mb-2 dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800`}
+                    >
+                      强制重新同步
+                    </button>
+                  </div>
+                </div>
               </div>
             </>
           )}
           <div className="mt-3">
             <p>
-              Question? Please see our{' '}
+              如有遇到问题，还请
               <a
                 className="underline decoration-sky-500 text-sky-500"
                 target="_blank"
                 href="https://www.dotalk.cn/s/3F"
                 rel="noreferrer"
               >
-                feedback
+                联系我们
               </a>{' '}
             </p>
           </div>

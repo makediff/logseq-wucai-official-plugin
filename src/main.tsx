@@ -138,17 +138,14 @@ function getNewEntryBlock(entry: NoteEntry, preferredDateFormat: string, exportC
   const createat = `${formatDate(entry.createAt, 'yyyy-MM-dd HH:mm')}`
   const updateat = `${formatDate(entry.updateAt, 'yyyy-MM-dd HH:mm')}`
   let prop = { noteid: entry.noteIdX, tags, createat, updateat, url: entry.url }
-
   const isHaveJournals = exportConfig.logseqPageAddToJournals === 1
   if (isHaveJournals) {
     const datex = `[[${formatDate(entry.createAt, preferredDateFormat)}]]`
     prop.date = datex
   }
   const isPageNoteAsAttr = exportConfig.logseqPageNoteAsAttr === 1
-  if (isPageNoteAsAttr) {
-    if (entry.pageNote && entry.pageNote.length > 0) {
-      prop.note = WuCaiUtils.formatContent(entry.pageNote)
-    }
+  if (isPageNoteAsAttr && entry.pageNote) {
+    prop.note = WuCaiUtils.formatContent(entry.pageNote)
   }
   return {
     content: WuCaiUtils.formatTitle(entry.title) || 'No title',
@@ -291,14 +288,16 @@ export async function exportInit(auto?: boolean, setNotification?, setIsSyncing?
     await new Promise((r) => setTimeout(r, 2000))
   }
 
-  const noteDirDeleted = (await logseq.Editor.getPage(BGCONSTS.ROOT_PAGE_NAME)) === null
+  // @todo 因为有了网页拆分规则，就无法通过单个文件来判断是否需要重新同步，需要有新的机制
+  const noteDirDeleted = false
+  // const noteDirDeleted = (await logseq.Editor.getPage(BGCONSTS.ROOT_PAGE_NAME)) === null
   let lastCursor2 = logseq.settings?.lastCursor || ''
   let response
   let errmsg = ''
   try {
-    if (noteDirDeleted) {
-      lastCursor2 = ''
-    }
+    // if (noteDirDeleted) {
+    //   lastCursor2 = ''
+    // }
     response = await callApi(API_URL_INIT, { noteDirDeleted, lastCursor2 })
   } catch (e) {
     errmsg = 'req export init error'
@@ -393,46 +392,29 @@ async function downloadArchive(
   const downloadRet: ExportDownloadResponse = data2['data']
   const entries: Array<NoteEntry> = downloadRet.notes || []
 
-  // 如果是同步到单页，则先建立好父节点，避免每次创建
-  let parentUUID
-  let parentName = BGCONSTS.ROOT_PAGE_NAME
-  let isAllInOne = exportConfig.logseqSplitTemplate === 'one'
-  if (isAllInOne) {
-    let parentEntry
-    parentEntry = await logseq.Editor.getPage(parentName)
-    if (!parentEntry) {
-      parentEntry = await logseq.Editor.createPage(parentName)
-    }
-    if (!parentEntry) {
-      setIsSyncing && setIsSyncing(false)
-      setNotification && setNotification('create page error ')
-      logger({ msg: 'create page error', parentName })
-      logseq.UI.showMsg('创建页面错误 1', 'error')
-      return
-    }
-    parentUUID = parentEntry.uuid
-  }
-
+  // 对网页所在的节点UUID进行缓存，以提升性能
   const cachedPageUUID = {}
   for (const entry of entries) {
     try {
-      if (!isAllInOne) {
-        parentName = WuCaiUtils.generatePageName(exportConfig.logseqSplitTemplate, entry.createAt)
-        parentUUID = cachedPageUUID[parentName] || ''
-        if (parentUUID.length <= 0) {
-          // 检查页面是否创建，如果没有则创建
-          let parentEntry = await logseq.Editor.getPage(parentName)
-          if (!parentEntry) {
-            parentEntry = await logseq.Editor.createPage(parentName)
-          }
-          if (!parentEntry) {
+      let parentName = WuCaiUtils.generatePageName(exportConfig.logseqSplitTemplate, entry.createAt)
+      let parentUUID = cachedPageUUID[parentName] || ''
+      if (!parentUUID) {
+        // 检查页面是否创建，如果没有则创建
+        let tmpEntry = await logseq.Editor.getPage(parentName)
+        if (!tmpEntry) {
+          tmpEntry = await logseq.Editor.createPage(parentName)
+          if (!tmpEntry) {
             // create page error
             continue
           }
-          parentUUID = parentEntry.uuid
-          cachedPageUUID[parentName] = parentEntry.uuid
         }
+        parentUUID = tmpEntry.uuid
+        cachedPageUUID[parentName] = parentUUID
+        logger({ msg: 'create new node', parentName, parentUUID })
+      } else {
+        logger({ msg: 'use cache node', parentName, parentUUID })
       }
+
       const noteIdX = entry.noteIdX
       let webpageBlock = await getWebPageBlockByNoteIdX(parentName, noteIdX)
       if (!webpageBlock) {
@@ -445,16 +427,15 @@ async function downloadArchive(
           sibling: false,
           properties: tmpBlock.properties,
         })
-      }
-      if (!webpageBlock) {
-        console.log({ msg: 'entryBlock not found' })
-        continue
+        if (!webpageBlock) {
+          console.log({ msg: 'entryBlock not found' })
+          continue
+        }
       }
 
       entry.highlights = entry.highlights || []
 
-      // is have pagenote ?
-      if (entry.pageNote && entry.pageNote.length > 0) {
+      if (entry.pageNote) {
         const pageNoteCore = WuCaiUtils.formatContent(entry.pageNote)
         const isPageNoteAsAttr = exportConfig.logseqPageNoteAsAttr === 1
         if (isPageNoteAsAttr) {
@@ -475,7 +456,7 @@ async function downloadArchive(
       const isAnnoAsAttr = exportConfig.logseqAnnoAsAttr === 1
       for (const light of entry.highlights) {
         let noteCore
-        if (light.imageUrl && light.imageUrl.length > 0) {
+        if (light.imageUrl) {
           noteCore = `![](${light.imageUrl})`
         } else {
           noteCore = WuCaiUtils.formatContent(light.note)
@@ -483,11 +464,11 @@ async function downloadArchive(
         let highBlock = await getHighlightBlockBy(highParentUUID, noteCore)
         if (!highBlock) {
           highBlock = (await logseq.Editor.insertBlock(highParentUUID, noteCore, { sibling: false })) || undefined
+          if (!highBlock) {
+            continue
+          }
         }
-        if (!highBlock) {
-          continue
-        }
-        if (light.annonation && light.annonation.length > 0) {
+        if (light.annonation) {
           const annoCore = WuCaiUtils.formatContent(light.annonation)
           if (isAnnoAsAttr) {
             highBlock.properties = highBlock.properties || {}
@@ -507,13 +488,6 @@ async function downloadArchive(
       logger({ msg: 'process entry error', entry, e2 })
       setNotification && setNotification('process highlight error')
     }
-  }
-
-  if (!checkUpdate) {
-    console.log({ v2: 3 })
-    setNotification && setNotification(null)
-    setIsSyncing && setIsSyncing(false)
-    return
   }
 
   const isEmpty = entries.length <= 0

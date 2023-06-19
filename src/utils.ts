@@ -61,6 +61,9 @@ class WuCaiUtils {
   static generatePageName(titleTemplate: string, createat: number): string {
     let ds = new Date(createat * 1000)
     const prefix = 'WuCaiHighlights-'
+    if ('one' == titleTemplate) {
+      return 'WuCaiHighlights'
+    }
     if ('year' == titleTemplate) {
       return prefix + format(ds, 'yyyy')
     }
