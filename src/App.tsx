@@ -12,20 +12,38 @@ function App() {
   const [currentGraph, setCurrentGraph] = useState(logseq.settings!.currentGraph)
   const [notification, setNotification] = useState(null)
   const [isSyncing, setIsSyncing] = useState(false)
+  const newTokenRef = useRef('')
+  const isEnableAutoSync = false
 
   const onClickOutside = () => window.logseq.hideMainUI()
 
   async function connectToWuCai() {
     const currentGraph = await window.logseq.App.getCurrentGraph()
-    const token = await getUserAuthToken()
-    if (token !== undefined && token.length > 0) {
+    const token = (await getUserAuthToken()) || ''
+    if (token.length > 0) {
       logseq.updateSettings({
         wuCaiToken: token,
         currentGraph: currentGraph,
       })
       setAccessToken(token)
       setCurrentGraph(currentGraph)
-      setIsLoadAuto(true)
+      // setIsLoadAuto(true)
+    }
+  }
+
+  // 手动设置token
+  async function resetSyncToken() {
+    let wuCaiToken = newTokenRef.current.value || ''
+    wuCaiToken = wuCaiToken.replace(/^\s+|\s+$/g, '')
+    let isOK = wuCaiToken.length > 0
+    if (isOK) {
+      logseq.updateSettings({
+        wuCaiToken,
+      })
+      setAccessToken(wuCaiToken)
+      logseq.UI.showMsg(`设置成功`)
+    } else {
+      logseq.UI.showMsg(`设置失败，TOKEN不可为空`, 'warning')
     }
   }
 
@@ -33,7 +51,9 @@ function App() {
   async function resetSyncCursor() {
     if (logseq.settings && logseq.settings.lastCursor) {
       logseq.settings.lastCursor = ''
-      logseq.UI.showMsg(`reset sync cursor success`, 'warning')
+      logseq.UI.showMsg(`重置成功，下次将会重新同步所有数据`)
+    } else {
+      logseq.UI.showMsg(`重置失败`, 'warning')
     }
   }
 
@@ -53,7 +73,7 @@ function App() {
       logseq.UI.showMsg('WuCai sync is already in progress', 'warning')
     } else {
       setIsSyncing(true)
-      await exportInit(false, setNotification, setIsSyncing)
+      await exportInit(false, setNotification, setIsSyncing, setAccessToken, accessToken)
     }
   }
 
@@ -103,23 +123,41 @@ function App() {
           </div>
           <hr className="w-full mt-3 mb-3" />
           {!accessToken && (
-            <div className="mt-1 flex justify-between">
-              <div className="text-m text-gray-700">
-                获取五彩连接授权
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  连接到五彩后，将会自动同步你的划线到Logseq，如果没有五彩账号请先注册。
-                </p>
+            <>
+              <div className="mt-1 flex justify-between">
+                <div className="text-m text-gray-700">
+                  获取五彩同步授权
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    连接到五彩后，将会自动同步你的划线到Logseq，如果没有五彩账号请先注册。
+                  </p>
+                </div>
+                <div className="self-center mr-1">
+                  <button
+                    onClick={connectToWuCai}
+                    type="button"
+                    className="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-3 py-2 text-center mr-2 mb-2 dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800"
+                  >
+                    授权
+                  </button>
+                </div>
               </div>
-              <div className="self-center mr-1">
-                <button
-                  onClick={connectToWuCai}
-                  type="button"
-                  className="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-3 py-2 text-center mr-2 mb-2 dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800"
-                >
-                  获取授权
-                </button>
+              <div className="mt-1 flex justify-between">
+                <div className="text-m text-gray-700">
+                  手动填入授权TOKEN
+                  <p className="text-sm text-gray-500 dark:text-gray-400">请复制五彩后台线框内的TOKEN到此处</p>
+                  <textarea ref={newTokenRef} placeholder="粘贴 TOKEN 到此处" rows={4} cols={50} />
+                </div>
+                <div className="self-center mr-1">
+                  <button
+                    onClick={resetSyncToken}
+                    type="button"
+                    className="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-3 py-2 text-center mr-2 mb-2 dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800"
+                  >
+                    保存
+                  </button>
+                </div>
               </div>
-            </div>
+            </>
           )}
           {accessToken && (
             <>
@@ -148,33 +186,35 @@ function App() {
                     </button>
                   </div>
                 </div>
-                <div className="mt-1 mb-4 flex justify-between">
-                  <div>
-                    <label htmlFor="isLoadAuto" className="text-m text-gray-700">
-                      是否在Logseq启动的时候，自动触发同步
-                    </label>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">此功能目前不可用</p>
+                {isEnableAutoSync && (
+                  <div className="mt-1 mb-4 flex justify-between">
+                    <div>
+                      <label htmlFor="isLoadAuto" className="text-m text-gray-700">
+                        是否在Logseq启动的时候，自动触发同步
+                      </label>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">此功能目前不可用</p>
+                    </div>
+                    <div className="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
+                      <input
+                        type="checkbox"
+                        name="isLoadAuto"
+                        id="isLoadAuto"
+                        defaultChecked={isLoadAuto}
+                        onChange={() => {
+                          setIsLoadAuto(!isLoadAuto)
+                          logseq.updateSettings({
+                            isLoadAuto: !isLoadAuto,
+                          })
+                        }}
+                        className="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer"
+                      />
+                      <label
+                        htmlFor="isLoadAuto"
+                        className="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"
+                      ></label>
+                    </div>
                   </div>
-                  <div className="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
-                    <input
-                      type="checkbox"
-                      name="isLoadAuto"
-                      id="isLoadAuto"
-                      defaultChecked={isLoadAuto}
-                      onChange={() => {
-                        setIsLoadAuto(!isLoadAuto)
-                        logseq.updateSettings({
-                          isLoadAuto: !isLoadAuto,
-                        })
-                      }}
-                      className="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer"
-                    />
-                    <label
-                      htmlFor="isLoadAuto"
-                      className="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"
-                    ></label>
-                  </div>
-                </div>
+                )}
                 <div className="mt-1 mb-4 flex justify-between">
                   <div className="text-m text-gray-700 w-2/3">重置同步位置，强制重新同步所有内容</div>
                   <div className="self-center mr-1 mt-1">

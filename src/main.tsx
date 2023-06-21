@@ -59,28 +59,25 @@ interface ExportDownloadResponse {
 // @ts-expect-error
 const css = (t, ...args) => String.raw(t, ...args)
 const TriggerIconName = 'wucai-icon'
-// const WAITING_STATUSES = ['PENDING', 'RECEIVED', 'STARTED', 'RETRY']
 const SUCCESS_STATUSES = ['SYNCING']
 const API_URL_INIT = '/apix/openapi/wucai/sync/init'
 const API_URL_DOWNLOAD = '/apix/openapi/wucai/sync/download'
 const API_URL_ACK = '/apix/openapi/wucai/sync/ack'
-// const WRITE_STYLE_OVERWRITE = 1
-// const WRITE_STYLE_APPEND = 2
 
-function getAuthHeaders() {
+function getAuthHeaders(tk: string) {
   return {
-    AUTHORIZATION: `Token ${logseq.settings!.wuCaiToken}`,
+    AUTHORIZATION: `Token ${tk}`,
     'Logseq-Client': `${getLogseqClientID()}`,
   }
 }
 
-function callApi(url: string, params: any) {
+function callApi(url: string, accessToken: any, params: any) {
   const reqtime = Math.floor(+new Date() / 1000)
   params['v'] = BGCONSTS.VERSION_NUM
   params['serviceId'] = BGCONSTS.SERVICE_ID
   url += `?appid=${BGCONSTS.APPID}&ep=${BGCONSTS.ENDPOINT}&version=${BGCONSTS.VERSION}&reqtime=${reqtime}`
   return fetch(BGCONSTS.BASE_URL + url, {
-    headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+    headers: { ...getAuthHeaders(accessToken), 'Content-Type': 'application/json' },
     method: 'POST',
     body: JSON.stringify(params),
   })
@@ -106,7 +103,7 @@ export async function getUserAuthToken(attempt = 0) {
   let response, data
   try {
     let url = '/page/auth/openapi/gettoken'
-    response = await callApi(url, { did: uuid })
+    response = await callApi(url, '', { did: uuid })
   } catch (e) {
     console.log('WuCai Official plugin: fetch failed in getUserAuthToken: ', e)
   }
@@ -173,11 +170,12 @@ export function clearSettingsComplete() {
 interface ResponseCheckRet {
   isOk: boolean
   msg: string
+  errCode: number
 }
 
 // 对接口返回的内容进行检查
-function checkResponseBody(rsp: any): ResponseCheckRet {
-  let ret: ResponseCheckRet = { isOk: true, msg: '' }
+function checkResponseBody(rsp: any, setAccessToken?: any): ResponseCheckRet {
+  let ret: ResponseCheckRet = { isOk: true, msg: '', errCode: 1 }
   if (!rsp) {
     ret.isOk = false
     ret.msg = 'WuCai: call api failed'
@@ -190,8 +188,10 @@ function checkResponseBody(rsp: any): ResponseCheckRet {
   }
   let errCode = rsp.code
   ret.isOk = false
+  ret.errCode = rsp.code
   if (10000 === errCode || 10100 === errCode || 10101 === errCode) {
     logseq.updateSettings({ wuCaiToken: '' })
+    setAccessToken && setAccessToken('')
   }
   let err = localize(rsp['message'] || 'call api failed')
   err = `WuCai: ${errCode} ${err}`
@@ -263,7 +263,7 @@ function getLastCursor(newCursor: string, savedCursor: string): string {
 }
 
 // @ts-ignore
-export async function exportInit(auto?: boolean, setNotification?, setIsSyncing?) {
+export async function exportInit(auto?: boolean, setNotification?, setIsSyncing?, setAccessToken?, accessToken?) {
   setNotification = setNotification || function (x: any) {}
   // @ts-ignore
   if (window.onAnotherGraph) {
@@ -298,7 +298,7 @@ export async function exportInit(auto?: boolean, setNotification?, setIsSyncing?
     // if (noteDirDeleted) {
     //   lastCursor2 = ''
     // }
-    response = await callApi(API_URL_INIT, { noteDirDeleted, lastCursor2 })
+    response = await callApi(API_URL_INIT, accessToken, { noteDirDeleted, lastCursor2 })
   } catch (e) {
     errmsg = 'req export init error'
     logger({ errmsg, e })
@@ -311,7 +311,7 @@ export async function exportInit(auto?: boolean, setNotification?, setIsSyncing?
   }
 
   const data2 = await response.json()
-  const checkRet: ResponseCheckRet = checkResponseBody(data2)
+  const checkRet: ResponseCheckRet = checkResponseBody(data2, setAccessToken)
   if (!checkRet.isOk) {
     setIsSyncing(false)
     setNotification(checkRet.msg)
@@ -341,7 +341,16 @@ export async function exportInit(auto?: boolean, setNotification?, setIsSyncing?
 
   const df = (await logseq.App.getUserConfigs()).preferredDateFormat
   // step1~2: check update first, then sync data
-  await downloadArchive(lastCursor, true, df, initRet.exportConfig, setNotification, setIsSyncing)
+  await downloadArchive(
+    lastCursor,
+    true,
+    df,
+    initRet.exportConfig,
+    setNotification,
+    setIsSyncing,
+    setAccessToken,
+    accessToken
+  )
 }
 
 // @ts-ignore
@@ -350,8 +359,10 @@ async function downloadArchive(
   checkUpdate: boolean,
   preferredDateFormat: string,
   exportConfig: ExportConfig,
-  setNotification?,
-  setIsSyncing?
+  setNotification?: any,
+  setIsSyncing?: any,
+  setAccessToken?: any,
+  accessToken?: any
 ): Promise<void> {
   let response
   let flagx = ''
@@ -359,7 +370,7 @@ async function downloadArchive(
   let noteIdXs: Array<string> = []
   // logger({ msg: 'download', checkUpdate, flagx, lastCursor2 })
   try {
-    response = await callApi(API_URL_DOWNLOAD, {
+    response = await callApi(API_URL_DOWNLOAD, accessToken, {
       lastCursor2,
       noteIdXs,
       flagx,
@@ -380,7 +391,7 @@ async function downloadArchive(
   }
 
   const data2 = await response.json()
-  const checkRet: ResponseCheckRet = checkResponseBody(data2)
+  const checkRet: ResponseCheckRet = checkResponseBody(data2, setAccessToken)
   if (!checkRet.isOk) {
     setIsSyncing(false)
     setNotification('request download api error 2')
@@ -506,21 +517,30 @@ async function downloadArchive(
     setIsSyncing && setIsSyncing(false)
     setNotification && setNotification(null)
     handleSyncSuccess('', lastCursor2)
-    await acknowledgeSyncCompleted()
+    await acknowledgeSyncCompleted(accessToken)
     logseq.UI.showMsg('WuCai Hightlights sync completed')
     return
   }
 
   await new Promise((r) => setTimeout(r, 5000))
   const isBeginSyncData = checkUpdate && isEmpty
-  await downloadArchive(lastCursor2, !isBeginSyncData, preferredDateFormat, exportConfig, setNotification, setIsSyncing)
+  await downloadArchive(
+    lastCursor2,
+    !isBeginSyncData,
+    preferredDateFormat,
+    exportConfig,
+    setNotification,
+    setIsSyncing,
+    setAccessToken,
+    accessToken
+  )
   logger({ msg: 'continue download', checkUpdate, lastCursor2 })
 }
 
-async function acknowledgeSyncCompleted() {
+async function acknowledgeSyncCompleted(accessToken?: any) {
   try {
     const lastCursor2 = logseq.settings?.lastCursor
-    callApi(API_URL_ACK, { lastCursor2 })
+    callApi(API_URL_ACK, accessToken, { lastCursor2 })
   } catch (e) {
     logger({ msg: 'fetch failed to acknowledged sync: ', e })
   }
