@@ -1,5 +1,5 @@
 
-rm -rf dist logseq-wucai-official-plugin-*
+rm -rf dist logseq-wucai-official-plugin-*.zip
 npm run build
 
 tt=$( date "+%y%m%d" )

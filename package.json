@@ -2,7 +2,7 @@
   "name": "logseq-wucai-official-plugin",
   "author": "五彩",
   "description": "Official WuCai <-> Logseq integration",
-  "version": "23.6.21",
+  "version": "23.6.24",
   "main": "dist/index.html",
   "scripts": {
     "dev": "vite build --watch",

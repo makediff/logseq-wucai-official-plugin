@@ -43,8 +43,6 @@ class WuCaiUtils {
     return s.replace(/"/g, '\\"')
   }
 
-  static getWebPagePageName() {}
-
   static formatTitle(s: string): string {
     s = s || ''
     s = s.replace(/^\s+|\s+$/, '')

@@ -9,7 +9,6 @@ import { IBatchBlock, PageEntity, SettingSchemaDesc } from '@logseq/libs/dist/LS
 import { createRoot } from 'react-dom/client'
 import { BlockEntity, BlockUUID, PageIdentity } from '@logseq/libs/dist/LSPlugin.user'
 import { WuCaiUtils } from './utils'
-import { el } from 'date-fns/locale'
 
 interface HighlightInfo {
   note: string
@@ -64,20 +63,21 @@ const API_URL_INIT = '/apix/openapi/wucai/sync/init'
 const API_URL_DOWNLOAD = '/apix/openapi/wucai/sync/download'
 const API_URL_ACK = '/apix/openapi/wucai/sync/ack'
 
-function getAuthHeaders(tk: string) {
+function getAuthHeaders() {
+  const tk = logseq.settings?.wuCaiToken || ''
   return {
     AUTHORIZATION: `Token ${tk}`,
     'Logseq-Client': `${getLogseqClientID()}`,
   }
 }
 
-function callApi(url: string, accessToken: any, params: any) {
+function callApi(url: string, params: any) {
   const reqtime = Math.floor(+new Date() / 1000)
   params['v'] = BGCONSTS.VERSION_NUM
   params['serviceId'] = BGCONSTS.SERVICE_ID
   url += `?appid=${BGCONSTS.APPID}&ep=${BGCONSTS.ENDPOINT}&version=${BGCONSTS.VERSION}&reqtime=${reqtime}`
   return fetch(BGCONSTS.BASE_URL + url, {
-    headers: { ...getAuthHeaders(accessToken), 'Content-Type': 'application/json' },
+    headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
     method: 'POST',
     body: JSON.stringify(params),
   })
@@ -103,7 +103,7 @@ export async function getUserAuthToken(attempt = 0) {
   let response, data
   try {
     let url = '/page/auth/openapi/gettoken'
-    response = await callApi(url, '', { did: uuid })
+    response = await callApi(url, { did: uuid })
   } catch (e) {
     console.log('WuCai Official plugin: fetch failed in getUserAuthToken: ', e)
   }
@@ -211,9 +211,7 @@ function getErrorMessageFromResponse(response: Response) {
 
 // 获取划线所在的block
 async function getHighlightBlockBy(parentBlockId: string, highlight: string): Promise<BlockEntity | undefined> {
-  /**
-   * 如果 block 产生了 ref，会改变 content，所以需要用 includes 来判断
-   */
+  // 23.6.21 如果 block 产生了 ref，会改变 content，所以需要用 includes 来判断
   const blocks = (
     await logseq.DB.datascriptQuery<BlockEntity[]>(
       `[:find (pull ?b [*])
@@ -263,7 +261,7 @@ function getLastCursor(newCursor: string, savedCursor: string): string {
 }
 
 // @ts-ignore
-export async function exportInit(auto?: boolean, setNotification?, setIsSyncing?, setAccessToken?, accessToken?) {
+export async function exportInit(auto?: boolean, setNotification?, setIsSyncing?, setAccessToken?) {
   setNotification = setNotification || function (x: any) {}
   // @ts-ignore
   if (window.onAnotherGraph) {
@@ -298,7 +296,7 @@ export async function exportInit(auto?: boolean, setNotification?, setIsSyncing?
     // if (noteDirDeleted) {
     //   lastCursor2 = ''
     // }
-    response = await callApi(API_URL_INIT, accessToken, { noteDirDeleted, lastCursor2 })
+    response = await callApi(API_URL_INIT, { noteDirDeleted, lastCursor2 })
   } catch (e) {
     errmsg = 'req export init error'
     logger({ errmsg, e })
@@ -321,9 +319,10 @@ export async function exportInit(auto?: boolean, setNotification?, setIsSyncing?
 
   const initRet: ExportInitRequestResponse = data2['data']
   const lastCursor = getLastCursor(initRet.lastCursor2, lastCursor2)
-  logseq.updateSettings({ lastCursor })
+  if (lastCursor) {
+    logseq.updateSettings({ lastCursor })
+  }
 
-  // 错误的状态
   if (!SUCCESS_STATUSES.includes(initRet.taskStatus)) {
     handleSyncSuccess()
     logseq.UI.showMsg('WuCai data is already up to date')
@@ -341,16 +340,7 @@ export async function exportInit(auto?: boolean, setNotification?, setIsSyncing?
 
   const df = (await logseq.App.getUserConfigs()).preferredDateFormat
   // step1~2: check update first, then sync data
-  await downloadArchive(
-    lastCursor,
-    true,
-    df,
-    initRet.exportConfig,
-    setNotification,
-    setIsSyncing,
-    setAccessToken,
-    accessToken
-  )
+  await downloadArchive(lastCursor, true, df, initRet.exportConfig, setNotification, setIsSyncing, setAccessToken)
 }
 
 // @ts-ignore
@@ -361,8 +351,7 @@ async function downloadArchive(
   exportConfig: ExportConfig,
   setNotification?: any,
   setIsSyncing?: any,
-  setAccessToken?: any,
-  accessToken?: any
+  setAccessToken?: any
 ): Promise<void> {
   let response
   let flagx = ''
@@ -370,7 +359,7 @@ async function downloadArchive(
   let noteIdXs: Array<string> = []
   // logger({ msg: 'download', checkUpdate, flagx, lastCursor2 })
   try {
-    response = await callApi(API_URL_DOWNLOAD, accessToken, {
+    response = await callApi(API_URL_DOWNLOAD, {
       lastCursor2,
       noteIdXs,
       flagx,
@@ -410,12 +399,10 @@ async function downloadArchive(
       let parentName = WuCaiUtils.generatePageName(exportConfig.logseqSplitTemplate, entry.createAt)
       let parentUUID = cachedPageUUID[parentName] || ''
       if (!parentUUID) {
-        // 检查页面是否创建，如果没有则创建
         let tmpEntry = await logseq.Editor.getPage(parentName)
         if (!tmpEntry) {
           tmpEntry = await logseq.Editor.createPage(parentName)
           if (!tmpEntry) {
-            // create page error
             continue
           }
         }
@@ -439,7 +426,7 @@ async function downloadArchive(
           properties: tmpBlock.properties,
         })
         if (!webpageBlock) {
-          console.log({ msg: 'entryBlock not found' })
+          logger({ msg: 'entryBlock not found', tmpBlock })
           continue
         }
       }
@@ -517,7 +504,7 @@ async function downloadArchive(
     setIsSyncing && setIsSyncing(false)
     setNotification && setNotification(null)
     handleSyncSuccess('', lastCursor2)
-    await acknowledgeSyncCompleted(accessToken)
+    await acknowledgeSyncCompleted()
     logseq.UI.showMsg('WuCai Hightlights sync completed')
     return
   }
@@ -531,16 +518,15 @@ async function downloadArchive(
     exportConfig,
     setNotification,
     setIsSyncing,
-    setAccessToken,
-    accessToken
+    setAccessToken
   )
   logger({ msg: 'continue download', checkUpdate, lastCursor2 })
 }
 
-async function acknowledgeSyncCompleted(accessToken?: any) {
+async function acknowledgeSyncCompleted() {
   try {
     const lastCursor2 = logseq.settings?.lastCursor
-    callApi(API_URL_ACK, accessToken, { lastCursor2 })
+    callApi(API_URL_ACK, { lastCursor2 })
   } catch (e) {
     logger({ msg: 'fetch failed to acknowledged sync: ', e })
   }
@@ -609,8 +595,10 @@ function main() {
     },
   ]
   logseq.useSettingsSchema(schema)
+
   const pluginId = logseq.baseInfo.id
   console.info({ msg: 'wucai loaded', pluginId })
+
   const container = document.getElementById('app')
   const root = createRoot(container!)
   root.render(
@@ -671,7 +659,7 @@ function main() {
   window.logseq.App.onCurrentGraphChanged(() => {
     checkForCurrentGraph()
   })
-  configureSchedule()
+  // configureSchedule()
 }
 
 logseq.ready(main).catch(console.error)

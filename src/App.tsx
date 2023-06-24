@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import './App.css'
 import { getUserAuthToken, exportInit, checkForCurrentGraph } from './main'
-import { BGCONSTS } from './bgconsts'
 import { WuCaiUtils } from './utils'
 
 function App() {
@@ -49,12 +48,10 @@ function App() {
 
   // 重置同步光标
   async function resetSyncCursor() {
-    if (logseq.settings && logseq.settings.lastCursor) {
+    if (logseq.settings) {
       logseq.settings.lastCursor = ''
-      logseq.UI.showMsg(`重置成功，下次将会重新同步所有数据`)
-    } else {
-      logseq.UI.showMsg(`重置失败`, 'warning')
     }
+    logseq.UI.showMsg(`重置成功，下次将会重新同步所有数据`)
   }
 
   async function initiateSync() {
@@ -71,10 +68,10 @@ function App() {
     }
     if (isSyncing) {
       logseq.UI.showMsg('WuCai sync is already in progress', 'warning')
-    } else {
-      setIsSyncing(true)
-      await exportInit(false, setNotification, setIsSyncing, setAccessToken, accessToken)
+      return
     }
+    setIsSyncing(true)
+    await exportInit(false, setNotification, setIsSyncing, setAccessToken)
   }
 
   useEffect(() => {
