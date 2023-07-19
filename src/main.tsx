@@ -35,19 +35,20 @@ interface ExportInitRequestResponse {
 }
 
 interface NoteEntry {
-  title: string
-  url: string
   noteIdX: string
   noteId: number
-  wuCaiUrl: string
+  author: string
+  title: string
+  url: string
+  wucaiurl: string
+  readurl: string
   createAt: number
   updateAt: number
   pageNote: string
-  category: string
+  isStar: boolean
   tags: Array<string>
   highlights: Array<HighlightInfo>
   citekey: string
-  author: string
 }
 
 interface ExportDownloadResponse {
@@ -134,11 +135,17 @@ function getNewEntryBlock(entry: NoteEntry, preferredDateFormat: string, exportC
   const tags = (entry.tags || []).join(' ')
   const createat = `${formatDate(entry.createAt, 'yyyy-MM-dd HH:mm')}`
   const updateat = `${formatDate(entry.updateAt, 'yyyy-MM-dd HH:mm')}`
-  let prop = { noteid: entry.noteIdX, tags, createat, updateat, url: entry.url }
+  let prop = {
+    noteid: entry.noteIdX,
+    tags,
+    createat,
+    updateat,
+    url: entry.url || '',
+    wucaiurl: entry.wucaiurl || '',
+  }
   const isHaveJournals = exportConfig.logseqPageAddToJournals === 1
   if (isHaveJournals) {
-    const datex = `[[${formatDate(entry.createAt, preferredDateFormat)}]]`
-    prop.date = datex
+    prop.date = `[[${formatDate(entry.createAt, preferredDateFormat)}]]`
   }
   const isPageNoteAsAttr = exportConfig.logseqPageNoteAsAttr === 1
   if (isPageNoteAsAttr && entry.pageNote) {
@@ -416,6 +423,7 @@ async function downloadArchive(
       const noteIdX = entry.noteIdX
       let webpageBlock = await getWebPageBlockByNoteIdX(parentName, noteIdX)
       if (!webpageBlock) {
+        // 生成新的节点
         const tmpBlock = getNewEntryBlock(entry, preferredDateFormat, exportConfig)
         if (!tmpBlock) {
           continue

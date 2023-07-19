@@ -62,6 +62,9 @@ class WuCaiUtils {
     if ('one' == titleTemplate) {
       return 'WuCaiHighlights'
     }
+    if ('week' == titleTemplate) {
+      return prefix + format(ds, 'yyyy-MM') + '-W' + format(ds, 'w')
+    }
     if ('year' == titleTemplate) {
       return prefix + format(ds, 'yyyy')
     }
