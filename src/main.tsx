@@ -346,14 +346,12 @@ export async function exportInit(auto?: boolean, setNotification?, setIsSyncing?
   initRet.exportConfig.logseqAnnoAsAttr = initRet.exportConfig.logseqAnnoAsAttr || 2
 
   const df = (await logseq.App.getUserConfigs()).preferredDateFormat
-  // step1~2: check update first, then sync data
-  await downloadArchive(lastCursor, true, df, initRet.exportConfig, setNotification, setIsSyncing, setAccessToken)
+  await downloadArchive(lastCursor, df, initRet.exportConfig, setNotification, setIsSyncing, setAccessToken)
 }
 
 // @ts-ignore
 async function downloadArchive(
   lastCursor2: string,
-  checkUpdate: boolean,
   preferredDateFormat: string,
   exportConfig: ExportConfig,
   setNotification?: any,
@@ -372,7 +370,7 @@ async function downloadArchive(
       flagx,
       writeStyle,
       out: BGCONSTS.OUT,
-      checkUpdate,
+      checkUpdate: false,
     })
   } catch (e) {
     logger(['fetch failed in downloadArchive: ', e])
@@ -496,8 +494,7 @@ async function downloadArchive(
     }
   }
 
-  const isEmpty = entries.length <= 0
-  const isCompleted = !checkUpdate && isEmpty
+  const isCompleted = entries.length <= 0
   const tmpLastCursor2 = getLastCursor(downloadRet.lastCursor2, lastCursor2)
   if (!tmpLastCursor2 || lastCursor2 == tmpLastCursor2) {
     setNotification && setNotification(null)
@@ -518,17 +515,15 @@ async function downloadArchive(
   }
 
   await new Promise((r) => setTimeout(r, 5000))
-  const isBeginSyncData = checkUpdate && isEmpty
   await downloadArchive(
     lastCursor2,
-    !isBeginSyncData,
     preferredDateFormat,
     exportConfig,
     setNotification,
     setIsSyncing,
     setAccessToken
   )
-  logger({ msg: 'continue download', checkUpdate, lastCursor2 })
+  logger({ msg: 'continue download', lastCursor2 })
 }
 
 async function acknowledgeSyncCompleted() {
