@@ -10,56 +10,10 @@ import { createRoot } from 'react-dom/client'
 import { BlockEntity, BlockUUID, PageIdentity } from '@logseq/libs/dist/LSPlugin.user'
 import { WuCaiUtils } from './utils'
 
-interface HighlightInfo {
-  note: string
-  imageUrl: string
-  updateAt: number
-  annonation: string
-  color: string
-  slotId: number
-}
-
-interface ExportConfig {
-  logseqSplitTemplate: string
-  logseqPageAddToJournals: number
-  logseqPageNoteAsAttr: number
-  logseqAnnoAsAttr: number
-}
-
-interface ExportInitRequestResponse {
-  lastCursor2: string
-  totalNotes: number
-  notesExported: number
-  taskStatus: string
-  exportConfig: ExportConfig
-}
-
-interface NoteEntry {
-  noteIdX: string
-  noteId: number
-  author: string
-  title: string
-  url: string
-  wucaiurl: string
-  readurl: string
-  createAt: number
-  updateAt: number
-  pageNote: string
-  isStar: boolean
-  tags: Array<string>
-  highlights: Array<HighlightInfo>
-  citekey: string
-}
-
-interface ExportDownloadResponse {
-  notes: Array<NoteEntry>
-  lastCursor2: string
-}
-
 // @ts-expect-error
 const css = (t, ...args) => String.raw(t, ...args)
 const TriggerIconName = 'wucai-icon'
-const SUCCESS_STATUSES = ['SYNCING']
+const STATUS_SUCCESS = ['SYNCING']
 const API_URL_INIT = '/apix/openapi/wucai/sync/init'
 const API_URL_DOWNLOAD = '/apix/openapi/wucai/sync/download'
 const API_URL_ACK = '/apix/openapi/wucai/sync/ack'
@@ -85,12 +39,12 @@ function callApi(url: string, params: any) {
 }
 
 function getLogseqClientID() {
-  let cid = window.localStorage.getItem('wc-LogseqClientId')
+  let cid = window.localStorage.getItem(BGCONSTS.CLIENT_ID_KEY)
   if (cid) {
     return cid
   }
   cid = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15)
-  window.localStorage.setItem('wc-LogseqClientId', cid)
+  window.localStorage.setItem(BGCONSTS.CLIENT_ID_KEY, cid)
   return cid
 }
 
@@ -172,12 +126,6 @@ export function clearSettingsComplete() {
     isLoadAuto: true,
     currentGraph: null,
   })
-}
-
-interface ResponseCheckRet {
-  isOk: boolean
-  msg: string
-  errCode: number
 }
 
 // 对接口返回的内容进行检查
@@ -269,15 +217,13 @@ function getLastCursor(newCursor: string, savedCursor: string): string {
 
 // @ts-ignore
 export async function exportInit(auto?: boolean, setNotification?, setIsSyncing?, setAccessToken?) {
-  setNotification = setNotification || function (x: any) {}
+  setNotification = setNotification || function (x: any) { }
   // @ts-ignore
   if (window.onAnotherGraph) {
     setIsSyncing(false)
     setNotification(null)
     handleSyncError(() => {
-      const msg = `Graph changed during sync, please return to graph "${
-        logseq.settings!.currentGraph.name
-      }" to complete the sync`
+      const msg = `Graph changed during sync, please return to graph "${logseq.settings!.currentGraph.name}" to complete the sync`
       if (!auto) {
         logseq.UI.showMsg(msg, 'error')
       } else {
@@ -325,12 +271,13 @@ export async function exportInit(auto?: boolean, setNotification?, setIsSyncing?
   }
 
   const initRet: ExportInitRequestResponse = data2['data']
+  logger({ initRet, msg: "init rsp" })
   const lastCursor = getLastCursor(initRet.lastCursor2, lastCursor2)
   if (lastCursor) {
     logseq.updateSettings({ lastCursor })
   }
 
-  if (!SUCCESS_STATUSES.includes(initRet.taskStatus)) {
+  if (!STATUS_SUCCESS.includes(initRet.taskStatus)) {
     handleSyncSuccess()
     logseq.UI.showMsg('WuCai data is already up to date')
     setIsSyncing(false)
@@ -339,30 +286,28 @@ export async function exportInit(auto?: boolean, setNotification?, setIsSyncing?
   }
 
   // init values
-  initRet.exportConfig = initRet.exportConfig || {}
-  initRet.exportConfig.logseqSplitTemplate = initRet.exportConfig.logseqSplitTemplate || 'one'
-  initRet.exportConfig.logseqPageAddToJournals = initRet.exportConfig.logseqPageAddToJournals || 1
-  initRet.exportConfig.logseqPageNoteAsAttr = initRet.exportConfig.logseqPageNoteAsAttr || 2
-  initRet.exportConfig.logseqAnnoAsAttr = initRet.exportConfig.logseqAnnoAsAttr || 2
-
+  let { logseqSplitTemplate, logseqPageAddToJournals, logseqPageNoteAsAttr, logseqAnnoAsAttr, logseqQuery } = initRet.exportConfig || {}
+  const tmpConfig: ExportConfig = {
+    logseqSplitTemplate: logseqSplitTemplate || "note",
+    logseqPageAddToJournals: logseqPageAddToJournals || 1,
+    logseqPageNoteAsAttr: logseqPageNoteAsAttr || 2,
+    logseqAnnoAsAttr: logseqAnnoAsAttr || 2,
+    logseqQuery: logseqQuery || '',
+  }
   const df = (await logseq.App.getUserConfigs()).preferredDateFormat
-  await downloadArchive(lastCursor, df, initRet.exportConfig, setNotification, setIsSyncing, setAccessToken)
+  await downloadArchive(lastCursor, df, tmpConfig, setNotification, setIsSyncing, setAccessToken)
 }
 
 // @ts-ignore
 async function downloadArchive(
-  lastCursor2: string,
-  preferredDateFormat: string,
-  exportConfig: ExportConfig,
-  setNotification?: any,
-  setIsSyncing?: any,
-  setAccessToken?: any
+  lastCursor2: string, preferredDateFormat: string,
+  exportConfig: ExportConfig, setNotification?: any,
+  setIsSyncing?: any, setAccessToken?: any
 ): Promise<void> {
   let response
   let flagx = ''
   const writeStyle = 1
   let noteIdXs: Array<string> = []
-  // logger({ msg: 'download', checkUpdate, flagx, lastCursor2 })
   try {
     response = await callApi(API_URL_DOWNLOAD, {
       lastCursor2,
@@ -371,6 +316,7 @@ async function downloadArchive(
       writeStyle,
       out: BGCONSTS.OUT,
       checkUpdate: false,
+      q: exportConfig.logseqQuery || '',
     })
   } catch (e) {
     logger(['fetch failed in downloadArchive: ', e])
@@ -421,7 +367,6 @@ async function downloadArchive(
       const noteIdX = entry.noteIdX
       let webpageBlock = await getWebPageBlockByNoteIdX(parentName, noteIdX)
       if (!webpageBlock) {
-        // 生成新的节点
         const tmpBlock = getNewEntryBlock(entry, preferredDateFormat, exportConfig)
         if (!tmpBlock) {
           continue
@@ -449,7 +394,6 @@ async function downloadArchive(
             await logseq.Editor.upsertBlockProperty(webpageBlock.uuid, 'note', pageNoteCore)
           }
         } else {
-          // 如果页面笔记不作为block的属性，则和划线列表同级别
           entry.highlights.unshift({
             note: pageNoteCore,
           } as HighlightInfo)
@@ -645,8 +589,10 @@ function main() {
       font-size: 12px;
     }
 
-    .${TriggerIconName}:before {
-      content: '彩';
+    .${TriggerIconName} {
+      height: 20px;
+      width: 20px;
+      background: url(data:image/svg+xml;base64,Cjxzdmcgd2lkdGg9IjE4cHgiIGhlaWdodD0iMThweCIgdmlld0JveD0iMCAwIDE4IDE4IiB2ZXJzaW9uPSIxLjEiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiPgogICAgPGRlZnM+CiAgICAgICAgPHJlY3QgaWQ9InBhdGgtMTBqZXhodHNkdi0xIiB4PSIwIiB5PSIwIiB3aWR0aD0iMTgiIGhlaWdodD0iMTgiIHJ4PSI0Ij48L3JlY3Q+CiAgICAgICAgPGxpbmVhckdyYWRpZW50IHgxPSIyNS4zOTk0ODUxJSIgeTE9IjE0LjYwMjQzMjklIiB4Mj0iNDQuNzM5MDc2NyUiIHkyPSI3OS41NTgzMzQzJSIgaWQ9ImxpbmVhckdyYWRpZW50LTEwamV4aHRzZHYtMyI+CiAgICAgICAgICAgIDxzdG9wIHN0b3AtY29sb3I9IiNEMkNGOTciIG9mZnNldD0iMCUiPjwvc3RvcD4KICAgICAgICAgICAgPHN0b3Agc3RvcC1jb2xvcj0iI0U4RTA0OCIgb2Zmc2V0PSIxMDAlIj48L3N0b3A+CiAgICAgICAgPC9saW5lYXJHcmFkaWVudD4KICAgICAgICA8cmVjdCBpZD0icGF0aC0xMGpleGh0c2R2LTQiIHg9IjAiIHk9IjAiIHdpZHRoPSIxOCIgaGVpZ2h0PSIxOCIgcng9IjQiPjwvcmVjdD4KICAgIDwvZGVmcz4KICAgIDxnIGlkPSJQYWdlLTEiIHN0cm9rZT0ibm9uZSIgc3Ryb2tlLXdpZHRoPSIxIiBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiIG9wYWNpdHk9IjAuNjcyMjkzNTI3Ij4KICAgICAgICA8ZyBpZD0iaWNvbiI+CiAgICAgICAgICAgIDxtYXNrIGlkPSJtYXNrLTEwamV4aHRzZHYtMiIgZmlsbD0id2hpdGUiPgogICAgICAgICAgICAgICAgPHVzZSB4bGluazpocmVmPSIjcGF0aC0xMGpleGh0c2R2LTEiPjwvdXNlPgogICAgICAgICAgICA8L21hc2s+CiAgICAgICAgICAgIDxnIGlkPSJSZWN0YW5nbGUiPjwvZz4KICAgICAgICAgICAgPG1hc2sgaWQ9Im1hc2stMTBqZXhodHNkdi01IiBmaWxsPSJ3aGl0ZSI+CiAgICAgICAgICAgICAgICA8dXNlIHhsaW5rOmhyZWY9IiNwYXRoLTEwamV4aHRzZHYtNCI+PC91c2U+CiAgICAgICAgICAgIDwvbWFzaz4KICAgICAgICAgICAgPHVzZSBpZD0iUmVjdGFuZ2xlIiBmaWxsPSJ1cmwoI2xpbmVhckdyYWRpZW50LTEwamV4aHRzZHYtMykiIHhsaW5rOmhyZWY9IiNwYXRoLTEwamV4aHRzZHYtNCI+PC91c2U+CiAgICAgICAgICAgIDxnIGlkPSJwZW5jaWwiIG1hc2s9InVybCgjbWFzay0xMGpleGh0c2R2LTUpIiBmaWxsLXJ1bGU9Im5vbnplcm8iPgogICAgICAgICAgICAgICAgPGcgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoMy41Mzc2LCAtMTYuNzUxMykiIGlkPSJTaGFwZSI+CiAgICAgICAgICAgICAgICAgICAgPHBhdGggZD0iTTI2LjE2OTk0NTMsOS45MzgzOTU3NSBDMjQuNDQ0NzgwNiwxMS42NTk5MzE3IDEwLjE2MTI0ODEsMjUuOTE1NjIxMiA4LjMzNTQzMzMsMjcuNzM4MTQyNiBMMy41MTU0MTAxMSwyMi45MjcyNDk0IEM1LjgwMDU0MDk2LDIwLjY0NjgzODcgMTkuODY4MTI4NCw2LjYwNjY3MzQ5IDIxLjM0OTkyMiw1LjEyNzc2ODMxIEwyNi4xNjk5NDUzLDkuOTM4Mzk1NzUgWiIgZmlsbD0iI0NDRjJGRCI+PC9wYXRoPgogICAgICAgICAgICAgICAgICAgIDxwb2x5Z29uIGZpbGw9IiNGQUZBRkEiIHBvaW50cz0iOC4zMzU0MzMzIDI3LjczODE0MjYgNC4xMTc5Nzk1MyAyOS4zMDE1NTY3IDEuOTUzNzM1MzEgMjcuMTQxMjY1NSAzLjUxNTQxMDExIDIyLjkyNzI0OTQiPjwvcG9seWdvbj4KICAgICAgICAgICAgICAgICAgICA8cGF0aCBkPSJNOC45MDQ0NTI3MSwxNi41ODY2OTI1IEwzLjAzMzQ2MSwyMi40NDYyMzk4IEMyLjk2ODIyNDgyLDIyLjUxMTM0ODggMi45MTM5MDU3LDIyLjU5MzIwMDIgMi44NzkwMjQyOCwyMi42ODQ4ODQzIEMyLjMzMzk2OTE2LDI0LjE1NDQ4ODIgMC42ODkyMTgxMjUsMjguNTkzMDY0MSAwLjA0MjE4MTQ5NTYsMzAuMzM5MDQ5MiBDLTAuMDQ5OTQ3OTYwOSwzMC41ODgzMjM4IDAuMDExNTYwNDczMiwzMC44Njg2OTEzIDAuMjAwMDc5Nzc4LDMxLjA1NjMxMTYgQzAuMzg3MDAxNDI3LDMxLjI0Mjg2ODkgMC42Njc2NTAyNTYsMzEuMzA1ODUxOSAwLjkxOTAwOTMyOSwzMS4yMTI4MzkgQzIuNjE0NjE3OTksMzAuNTg0MzM3NSA3LjEwMjMzNTk3LDI4LjkyMDczNTMgOC41NzI2ODAwNywyOC4zNzU2Nzk3IEM4LjY1ODQxOTA0LDI4LjM0NDA1NTMgOC43NDc4ODU4MywyOC4yODg1MTMzIDguODE3MzgyNDEsMjguMjE5MTUyMiBMMTQuNjg3ODQxNSwyMi4zNjAxMzY0IEMxNC41OTk4NTAxLDIyLjQxNzUzODcgMTQuNjE2Mzg2NSwyMi40NDYyMzk4IDE0LjczNzQ1MDcsMjIuNDQ2MjM5OCBDMjMuODkzODk1MiwxMy4yMTcyMzM1IDI5LjAxNzUyNzYsOC4wNTgzODM0NSAzMC4xMDgzNDc5LDYuOTY5Njg5NTQgQzMxLjcwNzAzNDIsNS4zNzU5Nzk4NiAzMS43MDgwOTkzLDIuNzkxMjg0MTIgMzAuMTA4NjE0MiwxLjE5Njc3NzE3IEMyOC41MTA3MjY3LC0wLjM5ODc5Mjg1NCAyNS45MjMzNzkxLC0wLjM5OTA1ODU4OCAyNC4zMjQ0MjY1LDEuMTk2Nzc3MTcgTDE2LjYxNjk2OTIsOC44ODkyMTAxOCBDMTYuNjE2NzkxNiw5LjAxMDAzODQgMTQuMDQ1OTUyOCwxMS41NzU4NjU4IDguOTA0NDUyNzEsMTYuNTg2NjkyNSBaIE0xNy4wOTg5MTgzLDEwLjMzMjUwNDcgQzE3LjA5ODkxODMsMTAuMzMyNTA0NyAxNy4wOTg5MTgzLDEwLjMzMjUwNDcgMTcuMDk5MTg0NSwxMC4zMzIyMzkgQzE3LjA5OTE4NDUsMTAuMzMyMjM5IDE3LjA5OTE4NDUsMTAuMzMyMjM5IDE3LjA5OTE4NDUsMTAuMzMxOTczMiBMMjEuMzQ5OTIyLDYuMDg5Nzg3NDQgTDI1LjIwNTc4MDksOS45MzgzOTU3NSBMMjAuOTU1ODQyMSwxNC4xNzk3ODQyIEMyMC45NTU4NDIxLDE0LjE4MDA1IDIwLjk1NTg0MjEsMTQuMTgwMDUgMjAuOTU1NTc1OSwxNC4xODAwNSBMMjAuOTU1NTc1OSwxNC4xODAzMTU4IEw4LjMzNTQzMzMsMjYuNzc1ODU3NiBMNC40Nzk1NzQ1LDIyLjkyNzI0OTQgTDE3LjA5ODkxODMsMTAuMzMyNTA0NyBaIE00LjI5MDc4ODk0LDI4LjUxMTQ3ODUgTDIuNzQ0ODI0MSwyNi45Njg1MjczIEwzLjc4NTY3NDMxLDI0LjE1OTI3MTggTDcuMTAyMzM1OTcsMjcuNDY5NDY4MiBMNC4yOTA3ODg5NCwyOC41MTE0Nzg1IFogTTIuMjI0MjY1ODMsMjguMzczMjg3OSBMMi44ODQ4ODIyNiwyOS4wMzI2MTY1IEwxLjgzNTc3NzU5LDI5LjQyMTQxMDQgTDIuMjI0MjY1ODMsMjguMzczMjg3OSBaIiBmaWxsPSIjNEQ0QzRDIj48L3BhdGg+CiAgICAgICAgICAgICAgICA8L2c+CiAgICAgICAgICAgIDwvZz4KICAgICAgICA8L2c+CiAgICA8L2c+Cjwvc3ZnPgo=) no-repeat !important;
     }
   `)
 

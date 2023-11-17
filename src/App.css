@@ -14,3 +14,15 @@
     cursor: default;
     opacity: 0.6;
 }
+
+.text-m {
+    font-size: 14px;
+}
+
+.wc-flex-gap-8 {
+    gap: 8px;
+}
+
+.wc-bg-alert {
+    background-color: #BA514E;
+}

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import './App.css'
 import { getUserAuthToken, exportInit, checkForCurrentGraph } from './main'
 import { WuCaiUtils } from './utils'
+import { BGCONSTS } from './bgconsts'
 
 function App() {
   const innerRef = useRef<HTMLDivElement>(null)
@@ -54,14 +55,27 @@ function App() {
     logseq.UI.showMsg(`重置成功，下次将会重新同步所有数据`)
   }
 
+  async function resetAccount() {
+    if (logseq.settings) {
+      let wuCaiToken = ''
+      let lastCursor = ''
+      logseq.updateSettings({
+        wuCaiToken,
+        lastCursor,
+      })
+      logseq.settings.lastCursor = lastCursor
+      logseq.settings.wuCaiToken = wuCaiToken
+      window.localStorage.setItem(BGCONSTS.CLIENT_ID_KEY, '')
+    }
+    logseq.UI.showMsg(`清理成功，请重启logseq`)
+  }
+
   async function initiateSync() {
     checkForCurrentGraph()
     // @ts-ignore
     if (window.onAnotherGraph) {
       logseq.UI.showMsg(
-        `WuCai is connected to your other graph "${
-          logseq.settings!.currentGraph.name
-        }". Please switch to that to sync your latest highlights`,
+        `WuCai is connected to your other graph "${logseq.settings!.currentGraph.name}". Please switch to that to sync your latest highlights`,
         'warning'
       )
       return
@@ -90,19 +104,12 @@ function App() {
   if (visible) {
     return (
       <div ref={innerRef} className="flex justify-center border border-black">
-        <div className="absolute top-1/3 bg-white p-3 w-2/5 border">
+        <div className="absolute top-1/3 bg-white p-3 border">
           <div className="flex place-content-between">
             <div>
               <h2 className="text-xl font-semibold mb-2">五彩Logseq同步</h2>
               <span>
-                <a
-                  className="underline decoration-sky-500 text-sky-500"
-                  target="_blank"
-                  href="https://www.dotalk.cn/product/wucai"
-                  rel="noreferrer"
-                >
-                  五彩
-                </a>
+                <a className="underline decoration-sky-500 text-sky-500" target="_blank" href="https://www.dotalk.cn/product/wucai" rel="noreferrer" > 五彩 </a>
                 官方制作
               </span>
             </div>
@@ -121,7 +128,7 @@ function App() {
           <hr className="w-full mt-3 mb-3" />
           {!accessToken && (
             <>
-              <div className="mt-1 flex justify-between">
+              <div className="mt-1 flex justify-between wc-flex-gap-8">
                 <div className="text-m text-gray-700">
                   获取五彩同步授权
                   <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -164,9 +171,7 @@ function App() {
                     开始同步你的数据到Logseq
                     <p className="text-sm text-gray-500 dark:text-gray-400">
                       点击按钮开始同步，同步前可先到
-                      <a href="https://marker.dotalk.cn/#/personSetting/logseq" target="_blank">
-                        划线管理后台
-                      </a>
+                      <a href="https://marker.dotalk.cn/#/personSetting/logseq" target="_blank"> 划线管理后台 </a>
                       配置导出模板。
                     </p>
                   </div>
@@ -175,9 +180,7 @@ function App() {
                       onClick={initiateSync}
                       type="button"
                       disabled={isSyncing}
-                      className={`text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-3 py-2 text-center mr-2 mb-2 dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800 ${
-                        isSyncing ? 'button-disabled' : ''
-                      }`}
+                      className={`text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-3 py-2 text-center mr-2 mb-2 dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800 ${isSyncing ? 'button-disabled' : ''}`}
                     >
                       开始同步
                     </button>
@@ -205,10 +208,7 @@ function App() {
                         }}
                         className="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer"
                       />
-                      <label
-                        htmlFor="isLoadAuto"
-                        className="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"
-                      ></label>
+                      <label htmlFor="isLoadAuto" className="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer" ></label>
                     </div>
                   </div>
                 )}
@@ -218,9 +218,26 @@ function App() {
                     <button
                       onClick={resetSyncCursor}
                       type="button"
-                      className={`text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-3 py-2 text-center mr-2 mb-2 dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800`}
+                      className={`text-white wc-bg-alert hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-3 py-2 text-center mr-2 mb-2 dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800`}
                     >
                       强制重新同步
+                    </button>
+                  </div>
+                </div>
+                <div className="mt-1 mb-4 flex justify-between">
+                  <div className="text-m text-gray-700 w-2/3">
+                    重置账号
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      清理当前登录Token信息
+                    </p>
+                  </div>
+                  <div className="self-center mr-1 mt-1">
+                    <button
+                      onClick={resetAccount}
+                      type="button"
+                      className={`text-white wc-bg-alert hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-3 py-2 text-center mr-2 mb-2 dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800`}
+                    >
+                      重置账号
                     </button>
                   </div>
                 </div>
@@ -228,17 +245,7 @@ function App() {
             </>
           )}
           <div className="mt-3">
-            <p>
-              如有遇到问题，还请
-              <a
-                className="underline decoration-sky-500 text-sky-500"
-                target="_blank"
-                href="https://www.dotalk.cn/s/3F"
-                rel="noreferrer"
-              >
-                联系我们
-              </a>{' '}
-            </p>
+            <p> 如有遇到问题，还请 <a className="underline decoration-sky-500 text-sky-500" target="_blank" href="https://www.dotalk.cn/s/3F" rel="noreferrer" > 联系我们 </a>{' '} </p>
           </div>
           <div className="mt-3">
             <span className="text-sm text-gray-500">

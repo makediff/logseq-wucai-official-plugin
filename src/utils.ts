@@ -3,24 +3,6 @@ import { useMountedState } from 'react-use'
 import { format } from 'date-fns'
 
 class WuCaiUtils {
-  static splitStringAndTrimEmptyLine(coretxt: string): Array<string> {
-    if (!coretxt || coretxt.length <= 0) {
-      return []
-    }
-    let arrCore = coretxt.split('\n')
-    let ret = []
-    for (let i2 = 0; i2 < arrCore.length; i2++) {
-      let _s2 = arrCore[i2]
-        .replace(/[\s\t]+/, ' ')
-        .replace(/[\r\n]+/g, '')
-        .trim()
-      if (_s2.length > 0) {
-        ret.push(_s2)
-      }
-    }
-    return ret
-  }
-
   static useAppVisible() {
     const [visible, setVisible] = useState(logseq.isMainUIVisible)
     const isMounted = useMountedState()
@@ -61,17 +43,13 @@ class WuCaiUtils {
     const prefix = 'WuCaiHighlights-'
     if ('one' == titleTemplate) {
       return 'WuCaiHighlights'
-    }
-    if ('week' == titleTemplate) {
+    } else if ('week' == titleTemplate) {
       return prefix + format(ds, 'yyyy-MM') + '-W' + format(ds, 'w')
-    }
-    if ('year' == titleTemplate) {
+    } else if ('year' == titleTemplate) {
       return prefix + format(ds, 'yyyy')
-    }
-    if ('month' == titleTemplate) {
+    } else if ('month' == titleTemplate) {
       return prefix + format(ds, 'yyyyMM')
-    }
-    if ('quarter' == titleTemplate) {
+    } else if ('quarter' == titleTemplate) {
       return prefix + format(ds, 'yyyyQQQ')
     }
     return prefix + format(ds, 'yyyy-MM')

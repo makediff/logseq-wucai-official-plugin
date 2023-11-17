@@ -1,6 +1,6 @@
 
 rm -rf dist logseq-wucai-official-plugin-*.zip
-npm run build
+pnpm run build
 
 tt=$( date "+%y%m%d" )
 outfn="logseq-wucai-official-plugin-${tt}"
