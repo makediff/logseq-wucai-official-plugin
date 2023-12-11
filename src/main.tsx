@@ -130,8 +130,19 @@ function getNewEntryBlock(
       properties[attr.name] = tmpvalue
     }
   }
+  let title
+  if (parsedTemplate.TitleTemplate && parsedTemplate.TitleTemplate.render) {
+    const titleView = {
+      title: WuCaiUtils.formatTitle(entry.title),
+      url: entry.url,
+      wucaiurl: entry.wucaiurl,
+    }
+    title = WuCaiUtils.renderTemplate(parsedTemplate.TitleTemplate.value, titleView)
+  } else {
+    title = WuCaiUtils.formatTitle(entry.title)
+  }
   return {
-    title: WuCaiUtils.formatTitle(entry.title) || 'No title',
+    title: title || 'No title',
     properties,
   }
 }
@@ -317,6 +328,7 @@ export async function exportInit(auto?: boolean, setNotification?, setIsSyncing?
     logseqPageNoteAsAttr,
     logseqAnnoAsAttr,
     logseqQuery,
+    lsqtt,
     lsqat,
     lsqht,
     lsqant,
@@ -327,12 +339,14 @@ export async function exportInit(auto?: boolean, setNotification?, setIsSyncing?
     logseqPageNoteAsAttr: logseqPageNoteAsAttr || 2,
     logseqAnnoAsAttr: logseqAnnoAsAttr || 2,
     logseqQuery: logseqQuery || '',
+    lsqtt: lsqtt || '{{title}}',
     lsqat: lsqat || `collapsed:: true`,
     lsqht: lsqht || '{{note}}',
     lsqant: lsqant || '{{anno}}',
   }
   const df = (await logseq.App.getUserConfigs()).preferredDateFormat
   const parsedTemplate: WuCaiTemplates = {
+    TitleTemplate: { name: '', value: tmpConfig.lsqtt, render: false, },
     AttrTemplate: WuCaiUtils.parserAttrTemplate(tmpConfig.lsqat),
     HighlightTemplate: { name: '', value: tmpConfig.lsqht, render: false },
     AnnoTemplate: { name: '', value: tmpConfig.lsqant, render: false }

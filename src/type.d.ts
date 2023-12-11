@@ -17,6 +17,7 @@ interface ExportConfig {
     logseqPageNoteAsAttr: number
     logseqAnnoAsAttr: number
     logseqQuery: string
+    lsqtt: string
     lsqat: string
     lsqht: string
     lsqant: string
@@ -65,6 +66,7 @@ interface AttrsItem {
 }
 
 interface WuCaiTemplates {
+    TitleTemplate: AttrsItem
     AttrTemplate: Array<AttrsItem>
     HighlightTemplate: AttrsItem
     AnnoTemplate: AttrsItem

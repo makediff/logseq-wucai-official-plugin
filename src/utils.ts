@@ -83,6 +83,9 @@ class WuCaiUtils {
     if (tpl.AnnoTemplate) {
       this.preParser(tpl.AnnoTemplate)
     }
+    if (tpl.TitleTemplate) {
+      this.preParser(tpl.TitleTemplate)
+    }
     return {}
   }
 
