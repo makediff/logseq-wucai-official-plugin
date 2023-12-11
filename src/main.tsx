@@ -9,6 +9,7 @@ import { IBatchBlock, PageEntity, SettingSchemaDesc } from '@logseq/libs/dist/LS
 import { createRoot } from 'react-dom/client'
 import { BlockEntity, BlockUUID, PageIdentity } from '@logseq/libs/dist/LSPlugin.user'
 import { WuCaiUtils } from './utils'
+import Mustache from 'Mustache'
 
 // @ts-expect-error
 const css = (t, ...args) => String.raw(t, ...args)
@@ -60,12 +61,12 @@ export async function getUserAuthToken(attempt = 0) {
     let url = '/page/auth/openapi/gettoken'
     response = await callApi(url, { did: uuid })
   } catch (e) {
-    console.log('WuCai Official plugin: fetch failed in getUserAuthToken: ', e)
+    logger(['WuCai Official plugin: fetch failed in getUserAuthToken: ', e])
   }
   if (response && response.ok) {
     data = await response.json()
   } else {
-    console.log('WuCai Official plugin: bad response in getUserAuthToken: ', response)
+    logger(['WuCai Official plugin: bad response in getUserAuthToken: ', response])
     logseq.UI.showMsg('Authorization failed. Try again', 'warning')
     return
   }
@@ -73,10 +74,10 @@ export async function getUserAuthToken(attempt = 0) {
     return data.data.accessToken
   }
   if (attempt > 20) {
-    console.log('WuCai Official plugin: reached attempt limit in getUserAuthToken')
+    logger('WuCai Official plugin: reached attempt limit in getUserAuthToken')
     return
   }
-  console.log(`WuCai Official plugin: didn't get token data, retrying (attempt ${attempt + 1})`)
+  logger(`WuCai Official plugin: didn't get token data, retrying (attempt ${attempt + 1})`)
   await new Promise((r) => setTimeout(r, 1000))
   return await getUserAuthToken(attempt + 1)
 }
@@ -85,30 +86,54 @@ function formatDate(ts: number, preferredDateFormat: string): string {
   return format(new Date(ts * 1000), preferredDateFormat)
 }
 
-function getNewEntryBlock(entry: NoteEntry, preferredDateFormat: string, exportConfig: ExportConfig): IBatchBlock {
+function getNewEntryBlock(
+  entry: NoteEntry,
+  preferredDateFormat: string,
+  exportConfig: ExportConfig,
+  parsedTemplate: WuCaiTemplates
+) {
   const tags = (entry.tags || []).join(' ')
   const createat = `${formatDate(entry.createAt, 'yyyy-MM-dd HH:mm')}`
   const updateat = `${formatDate(entry.updateAt, 'yyyy-MM-dd HH:mm')}`
-  let prop = {
+  const view = {
     noteid: entry.noteIdX,
     tags,
     createat,
     updateat,
     url: entry.url || '',
     wucaiurl: entry.wucaiurl || '',
+    pagenote: entry.pageNote || '',
   }
-  const isHaveJournals = exportConfig.logseqPageAddToJournals === 1
-  if (isHaveJournals) {
-    prop.date = `[[${formatDate(entry.createAt, preferredDateFormat)}]]`
+  let properties: { [key: string]: any } = {
+    noteid: entry.noteIdX,
   }
-  const isPageNoteAsAttr = exportConfig.logseqPageNoteAsAttr === 1
-  if (isPageNoteAsAttr && entry.pageNote) {
-    prop.note = WuCaiUtils.formatContent(entry.pageNote)
+  if (exportConfig.logseqPageNoteAsAttr === 1) {
+    properties["note"] = entry.pageNote || ''
+  }
+  if (exportConfig.logseqPageAddToJournals === 1) {
+    properties["date"] = `[[${formatDate(entry.createAt, preferredDateFormat)}]]`
+  }
+  if (parsedTemplate.AttrTemplate) {
+    for (let attr of parsedTemplate.AttrTemplate) {
+      let tmpvalue: any = attr.value
+      if (attr.render) {
+        tmpvalue = WuCaiUtils.renderTemplate(attr.value, view)
+      }
+      if (!tmpvalue) {
+        continue
+      }
+      if (['true', 'false'].indexOf(tmpvalue) >= 0) {
+        tmpvalue = tmpvalue === 'true'
+      } else if (/^\d+$/.test(tmpvalue)) {
+        tmpvalue = parseInt(tmpvalue)
+      }
+      properties[attr.name] = tmpvalue
+    }
   }
   return {
-    content: WuCaiUtils.formatTitle(entry.title) || 'No title',
-    properties: prop,
-  } as IBatchBlock
+    title: WuCaiUtils.formatTitle(entry.title) || 'No title',
+    properties,
+  }
 }
 
 function handleSyncError(cb: () => void) {
@@ -286,23 +311,51 @@ export async function exportInit(auto?: boolean, setNotification?, setIsSyncing?
   }
 
   // init values
-  let { logseqSplitTemplate, logseqPageAddToJournals, logseqPageNoteAsAttr, logseqAnnoAsAttr, logseqQuery } = initRet.exportConfig || {}
+  let {
+    logseqSplitTemplate,
+    logseqPageAddToJournals,
+    logseqPageNoteAsAttr,
+    logseqAnnoAsAttr,
+    logseqQuery,
+    lsqat,
+    lsqht,
+    lsqant,
+  } = initRet.exportConfig || {}
   const tmpConfig: ExportConfig = {
     logseqSplitTemplate: logseqSplitTemplate || "note",
     logseqPageAddToJournals: logseqPageAddToJournals || 1,
     logseqPageNoteAsAttr: logseqPageNoteAsAttr || 2,
     logseqAnnoAsAttr: logseqAnnoAsAttr || 2,
     logseqQuery: logseqQuery || '',
+    lsqat: lsqat || `collapsed:: true`,
+    lsqht: lsqht || '{{note}}',
+    lsqant: lsqant || '{{anno}}',
   }
   const df = (await logseq.App.getUserConfigs()).preferredDateFormat
-  await downloadArchive(lastCursor, df, tmpConfig, setNotification, setIsSyncing, setAccessToken)
+  const parsedTemplate: WuCaiTemplates = {
+    AttrTemplate: WuCaiUtils.parserAttrTemplate(tmpConfig.lsqat),
+    HighlightTemplate: { name: '', value: tmpConfig.lsqht, render: false },
+    AnnoTemplate: { name: '', value: tmpConfig.lsqant, render: false }
+  }
+  const { message } = WuCaiUtils.preParserTemplate(parsedTemplate)
+  if (message) {
+    logseq.UI.showMsg(message)
+    setIsSyncing(false)
+    setNotification(null)
+    return
+  }
+  await downloadArchive(lastCursor, df, tmpConfig, parsedTemplate, setNotification, setIsSyncing, setAccessToken)
 }
 
 // @ts-ignore
 async function downloadArchive(
-  lastCursor2: string, preferredDateFormat: string,
-  exportConfig: ExportConfig, setNotification?: any,
-  setIsSyncing?: any, setAccessToken?: any
+  lastCursor2: string,
+  preferredDateFormat: string,
+  exportConfig: ExportConfig,
+  parsedTemplate: WuCaiTemplates,
+  setNotification?: any,
+  setIsSyncing?: any,
+  setAccessToken?: any
 ): Promise<void> {
   let response
   let flagx = ''
@@ -350,56 +403,51 @@ async function downloadArchive(
       let parentName = WuCaiUtils.generatePageName(exportConfig.logseqSplitTemplate, entry.createAt)
       let parentUUID = cachedPageUUID[parentName] || ''
       if (!parentUUID) {
-        let tmpEntry = await logseq.Editor.getPage(parentName)
-        if (!tmpEntry) {
-          tmpEntry = await logseq.Editor.createPage(parentName)
-          if (!tmpEntry) {
+        let tmpPage = await logseq.Editor.getPage(parentName)
+        if (!tmpPage) {
+          tmpPage = await logseq.Editor.createPage(parentName)
+          if (!tmpPage) {
             continue
           }
         }
-        parentUUID = tmpEntry.uuid
+        parentUUID = tmpPage.uuid
         cachedPageUUID[parentName] = parentUUID
         logger({ msg: 'create new node', parentName, parentUUID })
       } else {
         logger({ msg: 'use cache node', parentName, parentUUID })
       }
-
       const noteIdX = entry.noteIdX
       let webpageBlock = await getWebPageBlockByNoteIdX(parentName, noteIdX)
+      const { title, properties } = getNewEntryBlock(entry, preferredDateFormat, exportConfig, parsedTemplate)
+      if (!title) {
+        continue
+      }
+      logger({ msg: "new block", title, properties, })
       if (!webpageBlock) {
-        const tmpBlock = getNewEntryBlock(entry, preferredDateFormat, exportConfig)
-        if (!tmpBlock) {
-          continue
-        }
-        // logger({ msg: 'prepare insert webpage', parentUUID, cnt: tmpBlock.content })
-        webpageBlock = await logseq.Editor.insertBlock(parentUUID, tmpBlock.content, {
+        webpageBlock = await logseq.Editor.insertBlock(parentUUID, title, {
           sibling: false,
-          properties: tmpBlock.properties,
+          properties,
         })
         if (!webpageBlock) {
-          logger({ msg: 'entryBlock not found', tmpBlock })
+          logger({ msg: 'create page failed', title, properties })
           continue
         }
+      } else {
+        let updateProps = Object.keys(properties || {})
+        for (let name of updateProps) {
+          await logseq.Editor.upsertBlockProperty(webpageBlock.uuid, name, properties[name])
+        }
       }
-
-      entry.highlights = entry.highlights || []
-
       if (entry.pageNote) {
-        const pageNoteCore = WuCaiUtils.formatContent(entry.pageNote)
         const isPageNoteAsAttr = exportConfig.logseqPageNoteAsAttr === 1
-        if (isPageNoteAsAttr) {
-          webpageBlock.properties = webpageBlock.properties || {}
-          const oldNoteProp = webpageBlock.properties['note']
-          if (oldNoteProp != pageNoteCore) {
-            await logseq.Editor.upsertBlockProperty(webpageBlock.uuid, 'note', pageNoteCore)
-          }
-        } else {
+        if (!isPageNoteAsAttr) {
+          const pageNoteCore = WuCaiUtils.formatContent(entry.pageNote)
           entry.highlights.unshift({
             note: pageNoteCore,
           } as HighlightInfo)
         }
       }
-
+      entry.highlights = entry.highlights || []
       const highParentUUID = webpageBlock.uuid
       const isAnnoAsAttr = exportConfig.logseqAnnoAsAttr === 1
       for (const light of entry.highlights) {
@@ -407,7 +455,14 @@ async function downloadArchive(
         if (light.imageUrl) {
           noteCore = `![](${light.imageUrl})`
         } else {
-          noteCore = WuCaiUtils.formatContent(light.note)
+          const view = {
+            "refid": light.refid || '',
+            "refurl": WuCaiUtils.getHighlightUrl(entry.url, light.refurl),
+            "note": WuCaiUtils.formatContent(light.note),
+            "slotid": light.slotId || 1,
+            "color": light.color || '',
+          }
+          noteCore = WuCaiUtils.renderTemplate(parsedTemplate.HighlightTemplate.value, view)
         }
         let highBlock = await getHighlightBlockBy(highParentUUID, noteCore)
         if (!highBlock) {
@@ -438,7 +493,7 @@ async function downloadArchive(
     }
   }
 
-  const isCompleted = entries.length <= 0
+  const isCompleted = entries.length <= 0 || BGCONSTS.IS_DEBUG
   const tmpLastCursor2 = getLastCursor(downloadRet.lastCursor2, lastCursor2)
   if (!tmpLastCursor2 || lastCursor2 == tmpLastCursor2) {
     setNotification && setNotification(null)
@@ -463,6 +518,7 @@ async function downloadArchive(
     lastCursor2,
     preferredDateFormat,
     exportConfig,
+    parsedTemplate,
     setNotification,
     setIsSyncing,
     setAccessToken

@@ -1,8 +1,11 @@
 
 interface HighlightInfo {
+    refid: string
+    refurl: string
     note: string
     imageUrl: string
-    updateAt: number
+    updateat: number
+    createat: number
     annonation: string
     color: string
     slotId: number
@@ -14,6 +17,9 @@ interface ExportConfig {
     logseqPageNoteAsAttr: number
     logseqAnnoAsAttr: number
     logseqQuery: string
+    lsqat: string
+    lsqht: string
+    lsqant: string
 }
 
 interface ExportInitRequestResponse {
@@ -50,4 +56,16 @@ interface ResponseCheckRet {
     isOk: boolean
     msg: string
     errCode: number
+}
+
+interface AttrsItem {
+    name: string
+    value: string
+    render: bool
+}
+
+interface WuCaiTemplates {
+    AttrTemplate: Array<AttrsItem>
+    HighlightTemplate: AttrsItem
+    AnnoTemplate: AttrsItem
 }

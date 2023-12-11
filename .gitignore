@@ -6,3 +6,4 @@ logseq-wucai-official-*
 *.local
 .idea
 *.log
+test.js
