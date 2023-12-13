@@ -107,10 +107,10 @@ function App() {
         <div className="absolute top-1/3 bg-white p-3 border">
           <div className="flex place-content-between">
             <div>
-              <h2 className="text-xl font-semibold mb-2">五彩Logseq同步</h2>
+              <h2 className="text-xl font-semibold mb-2">五彩 Logseq </h2>
               <span>
                 <a className="underline decoration-sky-500 text-sky-500" target="_blank" href="https://www.dotalk.cn/product/wucai" rel="noreferrer" > 五彩 </a>
-                官方制作
+                官方, V{BGCONSTS.VERSION}
               </span>
             </div>
             <div className="flex flex-col justify-between items-end">
@@ -244,7 +244,7 @@ function App() {
               </div>
             </>
           )}
-          <div className="mt-3">
+          <div className="mt-3" >
             <p> 如有遇到问题，还请 <a className="underline decoration-sky-500 text-sky-500" target="_blank" href="https://www.dotalk.cn/s/3F" rel="noreferrer" > 联系我们 </a>{' '} </p>
           </div>
           <div className="mt-3">

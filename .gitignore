@@ -1,9 +1,10 @@
 node_modules
 .DS_Store
 dist
-logseq-wucai-official-*
+logseq-wucai-official-plugin-*
 *.zip
 *.local
 .idea
 *.log
 test.js
+src/

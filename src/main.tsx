@@ -132,12 +132,12 @@ function getNewEntryBlock(
   }
   let title
   if (parsedTemplate.TitleTemplate && parsedTemplate.TitleTemplate.render) {
-    const titleView = {
+    const view = {
       title: WuCaiUtils.formatTitle(entry.title),
       url: entry.url,
       wucaiurl: entry.wucaiurl,
     }
-    title = WuCaiUtils.renderTemplate(parsedTemplate.TitleTemplate.value, titleView)
+    title = WuCaiUtils.renderTemplate(parsedTemplate.TitleTemplate.value, view)
   } else {
     title = WuCaiUtils.formatTitle(entry.title)
   }
@@ -195,13 +195,31 @@ function getErrorMessageFromResponse(response: Response) {
     return 'Sync in progress initiated by different client'
   }
   if (response && response.status === 417) {
-    return 'Obsidian export is locked. Wait for an hour.'
+    return 'Logseq export is locked. Wait for an hour.'
   }
-  return `${response ? response.statusText : "Can't connect to server"}`
+  return response ? response.statusText : "Can't connect to server"
 }
 
 // 获取划线所在的block
-async function getHighlightBlockBy(parentBlockId: string, highlight: string): Promise<BlockEntity | undefined> {
+async function getHighlightBlockBy(parentBlockId: string, highlight: string, refid: string): Promise<BlockEntity | undefined> {
+  if (refid) {
+    const blocks = (
+      await logseq.DB.datascriptQuery<BlockEntity[]>(
+        `[:find (pull ?b [*])
+          :where
+            [?b :block/parent ?parent]
+            [?parent :block/uuid ?u]
+            [(str ?u) ?s]
+            [(= ?s "${parentBlockId}")]
+            [?b :block/properties ?prop]
+            [(get ?prop :wucairefid) ?wucairefid]
+            [(= ?wucairefid "${WuCaiUtils.escapeQuotes(refid)}")]
+        ]`
+      )
+    ).flat()
+    // logger({ msg: "find by refid", blocks, })
+    return blocks[0] || null
+  }
   // 23.6.21 如果 block 产生了 ref，会改变 content，所以需要用 includes 来判断
   const blocks = (
     await logseq.DB.datascriptQuery<BlockEntity[]>(
@@ -216,7 +234,17 @@ async function getHighlightBlockBy(parentBlockId: string, highlight: string): Pr
       ]`
     )
   ).flat()
+  // logger({ msg: "find by text", blocks, })
   return blocks[0]
+}
+
+async function addErrorLog(uuid: string, title: string) {
+  if (!uuid) {
+    logger({ err: "wucai sync error", title, })
+    return
+  }
+  title = format(new Date(), 'yy-MM-dd HH:mm:ss') + ', ' + title
+  logseq.Editor.insertBlock(uuid, title, { sibling: false, })
 }
 
 // 找出页面所在的block
@@ -236,14 +264,12 @@ async function getWebPageBlockByNoteIdX(pageName: string, noteIdX: string): Prom
 }
 
 function handleSyncSuccess(msg = 'Synced', lastCursor: string = '') {
-  logseq.updateSettings({
-    lastSyncFailed: false,
-  })
+  logseq.updateSettings({ lastSyncFailed: false, })
   if (lastCursor) {
     logseq.updateSettings({ lastCursor })
   }
-  if (msg && msg.length > 0) {
-    logseq.UI.showMsg(msg)
+  if (msg) {
+    logseq.UI.showMsg(msg || '')
   }
 }
 
@@ -277,14 +303,10 @@ export async function exportInit(auto?: boolean, setNotification?, setIsSyncing?
 
   // @todo 因为有了网页拆分规则，就无法通过单个文件来判断是否需要重新同步，需要有新的机制
   const noteDirDeleted = false
-  // const noteDirDeleted = (await logseq.Editor.getPage(BGCONSTS.ROOT_PAGE_NAME)) === null
   let lastCursor2 = logseq.settings?.lastCursor || ''
   let response
   let errmsg = ''
   try {
-    // if (noteDirDeleted) {
-    //   lastCursor2 = ''
-    // }
     response = await callApi(API_URL_INIT, { noteDirDeleted, lastCursor2 })
   } catch (e) {
     errmsg = 'req export init error'
@@ -321,7 +343,6 @@ export async function exportInit(auto?: boolean, setNotification?, setIsSyncing?
     return
   }
 
-  // init values
   let {
     logseqSplitTemplate,
     logseqPageAddToJournals,
@@ -344,7 +365,6 @@ export async function exportInit(auto?: boolean, setNotification?, setIsSyncing?
     lsqht: lsqht || '{{note}}',
     lsqant: lsqant || '{{anno}}',
   }
-  const df = (await logseq.App.getUserConfigs()).preferredDateFormat
   const parsedTemplate: WuCaiTemplates = {
     TitleTemplate: { name: '', value: tmpConfig.lsqtt, render: false, },
     AttrTemplate: WuCaiUtils.parserAttrTemplate(tmpConfig.lsqat),
@@ -358,6 +378,7 @@ export async function exportInit(auto?: boolean, setNotification?, setIsSyncing?
     setNotification(null)
     return
   }
+  const df = (await logseq.App.getUserConfigs()).preferredDateFormat
   await downloadArchive(lastCursor, df, tmpConfig, parsedTemplate, setNotification, setIsSyncing, setAccessToken)
 }
 
@@ -407,12 +428,28 @@ async function downloadArchive(
     return
   }
 
-  const downloadRet: ExportDownloadResponse = data2['data']
-  const entries: Array<NoteEntry> = downloadRet.notes || []
+  const downloadRet: ExportDownloadResponse = data2['data'] || {}
+  let entries: Array<NoteEntry> = downloadRet.notes || []
+
+  let errorLogUUID = ''
+  let errorLogBlock = await logseq.Editor.getPage(BGCONSTS.ErrorLogName)
+  if (!errorLogBlock) {
+    errorLogBlock = await logseq.Editor.createPage(BGCONSTS.ErrorLogName)
+  }
+  if (errorLogBlock) {
+    errorLogUUID = errorLogBlock.uuid
+  }
+
+  const entryCount = entries.length
+  if (entryCount > 0) {
+    await addErrorLog(errorLogUUID, `get ${entryCount} entries, begin sync ...`)
+  }
 
   // 对网页所在的节点UUID进行缓存，以提升性能
-  const cachedPageUUID = {}
+  const cachedPageUUID: { [key: string]: string } = {}
   for (const entry of entries) {
+    let logprefix = `begin sync note (${entry.noteIdX}), [${entry.title}](${entry.url})`
+    addErrorLog(errorLogUUID, logprefix)
     try {
       let parentName = WuCaiUtils.generatePageName(exportConfig.logseqSplitTemplate, entry.createAt)
       let parentUUID = cachedPageUUID[parentName] || ''
@@ -443,7 +480,7 @@ async function downloadArchive(
           properties,
         })
         if (!webpageBlock) {
-          logger({ msg: 'create page failed', title, properties })
+          addErrorLog(errorLogUUID, `${logprefix}, create block error`)
           continue
         }
       } else {
@@ -466,11 +503,12 @@ async function downloadArchive(
       const isAnnoAsAttr = exportConfig.logseqAnnoAsAttr === 1
       for (const light of entry.highlights) {
         let noteCore
+        let wucairefid = light.refid || ''
         if (light.imageUrl) {
           noteCore = `![](${light.imageUrl})`
         } else {
           const view = {
-            "refid": light.refid || '',
+            "refid": wucairefid,
             "refurl": WuCaiUtils.getHighlightUrl(entry.url, light.refurl),
             "note": WuCaiUtils.formatContent(light.note),
             "slotid": light.slotId || 1,
@@ -478,9 +516,13 @@ async function downloadArchive(
           }
           noteCore = WuCaiUtils.renderTemplate(parsedTemplate.HighlightTemplate.value, view)
         }
-        let highBlock = await getHighlightBlockBy(highParentUUID, noteCore)
+        let highBlock = await getHighlightBlockBy(highParentUUID, noteCore, wucairefid)
         if (!highBlock) {
-          highBlock = (await logseq.Editor.insertBlock(highParentUUID, noteCore, { sibling: false })) || undefined
+          let highlightProp = { wucairefid, }
+          highBlock = (await logseq.Editor.insertBlock(highParentUUID, noteCore, {
+            sibling: false,
+            properties: highlightProp,
+          })) || undefined
           if (!highBlock) {
             continue
           }
@@ -494,7 +536,7 @@ async function downloadArchive(
               await logseq.Editor.upsertBlockProperty(highBlock.uuid, 'note', annoCore)
             }
           } else {
-            let annoBlock = await getHighlightBlockBy(highBlock.uuid, annoCore)
+            let annoBlock = await getHighlightBlockBy(highBlock.uuid, annoCore, '')
             if (!annoBlock) {
               await logseq.Editor.insertBlock(highBlock.uuid, annoCore)
             }
@@ -502,6 +544,7 @@ async function downloadArchive(
         }
       }
     } catch (e2) {
+      addErrorLog(errorLogUUID, `${logprefix}, error ${e2}`)
       logger({ msg: 'process entry error', entry, e2 })
       setNotification && setNotification('process highlight error')
     }

@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { useMountedState } from 'react-use'
 import { format } from 'date-fns'
 import Mustache from 'Mustache'
-Mustache.escape = function (text) { return text; }
+Mustache.escape = function (text: any) { return text; }
 
 class WuCaiUtils {
   static useAppVisible() {
@@ -45,7 +45,11 @@ class WuCaiUtils {
     const prefix = 'WuCaiHighlights-'
     if ('one' == titleTemplate) {
       return 'WuCaiHighlights'
-    } else if ('week' == titleTemplate) {
+    }
+    // else if ('week-sunday' === titleTemplate) {
+    // } else if ('week-monday' === titleTemplate) {
+    // } 
+    else if ('week' == titleTemplate) {
       return prefix + format(ds, 'yyyy-MM') + '-W' + format(ds, 'w')
     } else if ('year' == titleTemplate) {
       return prefix + format(ds, 'yyyy')

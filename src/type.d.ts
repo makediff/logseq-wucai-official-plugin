@@ -33,7 +33,6 @@ interface ExportInitRequestResponse {
 
 interface NoteEntry {
     noteIdX: string
-    noteId: number
     author: string
     title: string
     url: string
