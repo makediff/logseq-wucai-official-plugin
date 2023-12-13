@@ -5,7 +5,7 @@ export class BGCONSTS {
   static ENDPOINT: string = 'logseqwucai'
   static VERSION: string = '23.12.13'
   static VERSION_NUM: number = 231213
-  static IS_DEBUG: boolean = true
+  static IS_DEBUG: boolean = false
   static TEST_TOKEN: string = ''
   static BASE_URL: string = 'https://marker.dotalk.cn'
   static OUT: string = 'json'
